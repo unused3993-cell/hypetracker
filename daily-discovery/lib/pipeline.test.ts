@@ -125,3 +125,19 @@ test("validateDraft flags missing sources, invented IDs, length, structure, and 
   for (const c of ["missing_subtitle", "too_few_sections", "missing_heading", "unknown_source_ids", "missing_sources", "word_count", "duplicate_topic"])
     assert.ok(codes.includes(c), `expected ${c} in ${codes.join(",")}`);
 });
+
+test("demo articles pass the pipeline's structural validation", async () => {
+  const { DEMO_ARTICLES } = await import("../demo/content");
+  const { demoDiscoveries } = await import("../demo");
+  for (const a of DEMO_ARTICLES) {
+    const r = validateDraft({ ...a.content, title: a.title, subtitle: a.subtitle, related_topics: a.related_topics }, a.sources, [], 0.5);
+    assert.deepEqual(r.issues.filter((i) => i.code !== "contains_quotations"), [], a.slug);
+  }
+  const ds = demoDiscoveries(new Date("2026-11-03T12:00:00Z"));
+  assert.equal(new Set(ds.map((d) => d.id)).size, ds.length);
+  assert.ok(ds.every((d) => !/'/.test(JSON.stringify(d.content))), "demo copy uses typographer's quotes");
+  for (let i = 1; i < ds.length; i++) {
+    assert.notEqual(ds[i].subcategory, ds[i - 1].subcategory);
+    if (ds[i - 1].category !== "History") assert.notEqual(ds[i].category, ds[i - 1].category);
+  }
+});

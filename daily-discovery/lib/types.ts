@@ -56,6 +56,14 @@ export interface LogEntry {
   data?: unknown;
 }
 
+export interface DiscoveryImage {
+  /** An image URL, or "plate:<name>" for an illustrated plate supplied by demo mode. */
+  src: string;
+  alt: string;
+  caption?: string;
+  credit?: string;
+}
+
 export interface Discovery {
   id: string;
   title: string | null;
@@ -75,4 +83,6 @@ export interface Discovery {
   error: string | null;
   created_at: string;
   published_at: string | null;
+  /** Optional lead image. The Phase 1 pipeline doesn't produce images yet; demo content does. */
+  image?: DiscoveryImage | null;
 }

@@ -4,6 +4,29 @@ This is the content pipeline for Daily Discovery. It picks one interesting topic
 
 This phase is only the engine and a test bench. It has no consumer UI, auth, notifications or quizzes.
 
+## Demo mode (no credentials)
+
+```bash
+cd daily-discovery
+npm install
+npm run demo         # open http://localhost:3000
+```
+
+Demo mode lets you try the reader experience without Anthropic or Supabase. It includes five hand-written sample discoveries (two history, two science, one technology), each with an illustrated plate. You can browse them on **Today** (`/`) and in the **Library** (`/library`), and step between issues with Previous/Next.
+
+- **Generation is simulated.** On the test bench the generate button plays back the pipeline's steps without calling any API, and `POST /api/generate` returns 403.
+- **The sample content is not from the pipeline.** I wrote it by hand. Its sources are real references, but they haven't been link-checked, and the pages label them that way.
+- **How to remove it.** Demo code lives in `demo/` (content, plates, data source). To remove demo mode, delete that folder, the lines marked `// demo` in `lib/repository.ts` and `app/components/Figure.tsx`, and the `demo` script in `package.json`.
+
+## Screens
+
+| Route | What it is |
+|---|---|
+| `/` | **Today**: the latest published discovery |
+| `/library` | **Library**: every published discovery, filterable by History, Science or Technology |
+| `/discoveries/[id]` | One issue, with Previous/Next navigation |
+| `/bench` | **Test bench**: every discovery in any status, with validation results, research notes and the generation log, plus the generate button |
+
 ## Setup
 
 **Requirements:** Node 20+ (tested on 22), a Supabase project and an Anthropic API key.

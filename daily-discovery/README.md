@@ -69,9 +69,12 @@ npm run generate                   # a topic chosen from the interest profile
 ```bash
 npm run research-check                    # step 1 only: retrieval + evidence for the 1919 eclipse topic
 npm run research-check -- --force-search  # also exercise Anthropic web search
-npm run compare-writers                   # research once, then write + verify with Opus 5.5 and Sonnet 5.5
-npm run compare-writers -- --revise       # include one revision round for each model
+npm run compare-writers -- --ledger runs/research-check-<time>.json --revise
+                                          # write + verify with Opus 5.5 and Sonnet 5.5 from that same ledger
+npm run compare-writers                   # or: research afresh, then compare
 ```
+
+Passing `--ledger` makes both models write from exactly the evidence you reviewed in `research-check`. `compare-writers` saves a Markdown file per model (the full article, every verification verdict and the cost table) and one JSON file with the ledger, both drafts, all verification rounds and usage.
 
 `research-check` reports:
 - which sources were actually retrieved, and how many characters of text were kept from each

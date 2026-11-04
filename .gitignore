@@ -1,0 +1,4 @@
+# Never commit secrets, wherever an env file is created.
+.env
+.env.*
+!.env.example

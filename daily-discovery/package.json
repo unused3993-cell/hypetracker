@@ -9,9 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "generate": "tsx scripts/generate.ts",
-    "research-check": "tsx scripts/research-check.ts",
-    "compare-writers": "tsx scripts/compare-writers.ts",
-    "test": "tsx --test lib/pipeline.test.ts lib/evidence.test.ts lib/verify.test.ts lib/e2e.test.ts"
+    "article": "tsx scripts/article.ts",
+    "test": "tsx --test lib/pipeline.test.ts lib/research.test.ts lib/review.test.ts lib/e2e.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",

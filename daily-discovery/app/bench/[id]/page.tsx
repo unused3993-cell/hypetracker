@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getById, isDemoMode } from "@/lib/repository";
-import type { Discovery, VerificationRound } from "@/lib/types";
+import type { Discovery, EditorialReview } from "@/lib/types";
 import { GenerateButton } from "../../components/GenerateButton";
 import { ReviewControls } from "../../components/ReviewControls";
 
@@ -8,149 +8,88 @@ export const dynamic = "force-dynamic";
 
 const usd = (n: number) => `$${n.toFixed(4)}`;
 
-function Verification({ round }: { round: VerificationRound }) {
-  const bad = round.assertions.filter((a) => a.verdict !== "supported");
+function Review({ review }: { review: EditorialReview }) {
   return (
     <div>
       <h4>
-        Round {round.round}: <span className={round.passed ? "ok" : "broken"}>{round.passed ? "passed" : "failed"}</span> —{" "}
-        {round.assertions.length - bad.length}/{round.assertions.length} assertions supported
+        Editorial review: <span className={review.passed ? "ok" : "broken"}>{review.passed ? "passed" : "unresolved substantive issues"}</span> —{" "}
+        {review.issues.length} issue(s), {review.issues.filter((i) => i.applied).length} corrected
       </h4>
-      <p>{round.summary}</p>
-      <details open={!round.passed}>
-        <summary>All assertions</summary>
+      <p>{review.summary}</p>
+      <p className="muted">Sources: {review.source_assessment}</p>
+      {review.issues.length > 0 && (
         <table>
           <thead>
             <tr>
               <th>Where</th>
-              <th>Assertion</th>
-              <th>Verdict</th>
-              <th>Claims</th>
+              <th>Issue</th>
+              <th>Correction</th>
             </tr>
           </thead>
           <tbody>
-            {round.assertions.map((a, i) => (
-              <tr key={i}>
-                <td className="muted">{a.location}</td>
+            {review.issues.map((i, k) => (
+              <tr key={k}>
+                <td className="muted">{i.location}</td>
                 <td>
-                  {a.assertion}
-                  {a.verdict !== "supported" && <div className="muted">{a.note}</div>}
+                  <span className={i.severity === "substantive" ? "broken" : "unverified"}>
+                    {i.severity} {i.type.replaceAll("_", " ")}
+                  </span>
+                  <div>“{i.excerpt}”</div>
+                  <div className="muted">
+                    {i.explanation} {i.source_ids.length ? `(${i.source_ids.join(", ")})` : ""}
+                  </div>
                 </td>
-                <td className={a.verdict === "supported" ? "ok" : "broken"}>{a.verdict.replaceAll("_", " ")}</td>
-                <td className="muted">{a.claim_ids.join(", ")}</td>
+                <td>
+                  {i.applied ? <span className="ok">applied</span> : <span className="broken">not applied</span>}
+                  <div>“{i.correction}”</div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </details>
-      {round.map_issues.length > 0 && (
-        <ul>
-          {round.map_issues.map((m, i) => (
-            <li key={i} className="unverified">
-              claim map: {m}
-            </li>
-          ))}
-        </ul>
       )}
     </div>
   );
 }
 
-function Evidence({ d }: { d: Discovery }) {
-  const ledger = d.evidence;
-  if (!ledger) return null;
-  const usable = ledger.claims.filter((c) => c.usable);
-  const excluded = ledger.claims.filter((c) => !c.usable);
+function Sources({ d }: { d: Discovery }) {
+  const pack = d.evidence;
+  if (!pack) return null;
+  const used = new Set(pack.passages.map((p) => p.source_id));
   return (
-    <>
-      <section className="panel">
-        <h3>
-          Evidence ledger — {usable.length} usable, {excluded.length} excluded
-        </h3>
-        <p className="muted">{ledger.sufficiency_reason}</p>
-        {ledger.conflicts.length > 0 && (
-          <>
-            <h4>Conflicts</h4>
-            <ul>
-              {ledger.conflicts.map((c, i) => (
-                <li key={i}>
-                  {c.summary} <span className="muted">({c.claim_ids.join(", ")})</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        <details>
-          <summary>Usable claims with verified quotes</summary>
-          <ol>
-            {usable.map((c) => (
-              <li key={c.id}>
-                <strong>{c.id}</strong> {c.statement}{" "}
-                <span className="muted">
-                  [{c.stakes.replaceAll("_", " ")}
-                  {c.status !== "supported" ? `, ${c.status}` : ""}]
-                </span>
-                {c.note && <div className="muted">{c.note}</div>}
-                <ul>
-                  {c.evidence.map((e, i) => (
-                    <li key={i} className={e.verified ? "" : "broken"}>
-                      {e.source_id}: “{e.quote}” {e.verified ? <span className="ok">✓ chars {e.location?.start}–{e.location?.end}</span> : <span>✗ not found</span>}
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ol>
-        </details>
-        <details>
-          <summary>Excluded claims</summary>
-          <ul>
-            {excluded.map((c) => (
-              <li key={c.id}>
-                <strong>{c.id}</strong> {c.statement} — <span className="broken">{c.exclusion_reason}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      </section>
-
-      <section className="panel">
-        <h3>Sources ({ledger.sources.length})</h3>
-        <table>
-          <tbody>
-            {ledger.sources.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <strong>{s.id}</strong>
-                </td>
-                <td>
-                  <a href={s.url} target="_blank" rel="noreferrer">
-                    {s.title}
-                  </a>
-                  <div className="muted">
-                    {s.origin} · {s.content_status}
-                    {s.detail ? ` (${s.detail})` : ""}
-                    {s.text ? ` · ${s.text.length.toLocaleString()} chars stored` : ""}
-                  </div>
-                  {s.credibility_note && <div className="muted">{s.credibility_note}</div>}
-                  {s.excerpts?.length ? <div className="muted">search excerpts: {s.excerpts.map((x) => `“${x}”`).join(" ")}</div> : null}
-                  {s.text && (
-                    <details>
-                      <summary className="muted">Stored text</summary>
-                      <pre>{s.text}</pre>
-                    </details>
-                  )}
-                </td>
-                <td>
-                  {s.authority ?? "—"}
-                  <div className="muted">{s.relevance ? `${s.relevance} relevance` : ""}</div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </>
+    <section className="panel">
+      <h3>
+        Research — {used.size} sources given to the writer, {pack.passages.reduce((n, p) => n + p.text.length, 0).toLocaleString()} chars
+      </h3>
+      <table>
+        <tbody>
+          {pack.sources.map((s) => (
+            <tr key={s.id}>
+              <td>
+                <strong>{s.id}</strong>
+              </td>
+              <td>
+                <a href={s.url} target="_blank" rel="noreferrer">
+                  {s.title}
+                </a>
+                <div className="muted">
+                  {s.origin} · {s.content_status}
+                  {s.detail ? ` (${s.detail})` : ""}
+                  {s.text ? ` · ${s.text.length.toLocaleString()} chars stored` : ""}
+                  {used.has(s.id) ? " · used" : ""}
+                </div>
+                {s.text && (
+                  <details>
+                    <summary className="muted">Stored text</summary>
+                    <pre>{s.text}</pre>
+                  </details>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -208,11 +147,9 @@ export default async function BenchDetail({ params }: { params: Promise<{ id: st
 
       {v && (
         <section className="panel">
-          <h3>Factual verification</h3>
+          <h3>Fact check</h3>
           <p className="muted">{v.disclaimer}</p>
-          {(v.verification ?? []).map((r) => (
-            <Verification key={r.round} round={r} />
-          ))}
+          {v.review && <Review review={v.review} />}
           {v.issues.length > 0 && (
             <>
               <h4>Other checks</h4>
@@ -228,7 +165,7 @@ export default async function BenchDetail({ params }: { params: Promise<{ id: st
         </section>
       )}
 
-      <Evidence d={d} />
+      <Sources d={d} />
 
       {u && (
         <section className="panel">

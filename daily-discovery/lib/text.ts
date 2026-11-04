@@ -2,7 +2,8 @@
 
 import type { ArticleContent } from "./types";
 
-export const WORD_TARGET = { min: 600, max: 900 } as const;
+/** Soft bounds for a warning only; the writer aims for ~1,000-1,500 words where the material warrants it. */
+export const WORD_TARGET = { min: 600, max: 1700 } as const;
 const WORDS_PER_MINUTE = 230;
 
 export function countWords(text: string): number {

@@ -19,7 +19,7 @@ export default async function Bench() {
       <h1>Test bench</h1>
       <p className="muted">
         Every discovery in any status. Generated articles stop at <strong>verified</strong> or <strong>needs review</strong>; only verified
-        ones can be approved for publication.
+        ones (no unresolved factual issues) can be approved for publication.
       </p>
       <GenerateButton demo={demo} />
       {loadError && <p className="error">{loadError}</p>}

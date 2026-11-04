@@ -2,102 +2,82 @@ import { z } from "zod";
 import { structured, type ModelSettings } from "./claude";
 import { stages } from "./config";
 import type { CostTracker } from "./cost";
-import { WORD_TARGET } from "./text";
-import type { ContentType, EvidenceLedger } from "./types";
+import type { ContentType, ResearchPack } from "./types";
+
+export const WORD_RANGE = { min: 1000, max: 1500 } as const;
 
 const ArticleSchema = z.object({
   title: z.string().describe("Compelling, accurate headline. No clickbait, no colon-subtitle."),
   subtitle: z.string().describe("One sentence explaining the subject."),
   introduction: z.array(z.string()).describe("Opening paragraph(s)"),
   sections: z
-    .array(z.object({ heading: z.string(), paragraphs: z.array(z.string()) }))
-    .describe("The body, in as many headed sections as the piece needs"),
-  related_topics: z.array(z.string()).describe("Exactly three specific subjects for future exploration"),
-  claim_map: z
     .array(
       z.object({
-        location: z.string().describe('Paragraph: "intro-1", "intro-2", "s1-1" (section 1, paragraph 1), "s2-3", ...'),
-        anchor: z.string().describe("The first 6-10 words of the sentence, copied exactly"),
-        claim_ids: z.array(z.string()),
+        heading: z.string(),
+        paragraphs: z.array(z.string()),
+        source_ids: z.array(z.string()).describe("IDs (S1, S2, ...) of the sources this section draws on"),
       }),
     )
-    .describe("Internal only, never shown to readers: one entry per sentence that states a fact, listing the claims it rests on"),
+    .describe("The body, in as many headed sections as the piece needs"),
+  related_topics: z.array(z.string()).describe("Exactly three specific subjects for future exploration"),
+  uncertainties: z.array(z.string()).describe("Points the sources disagree on or leave open, one sentence each, for a reader's note. Empty if none."),
 });
 
 export type DraftArticle = z.infer<typeof ArticleSchema>;
 
-const SYSTEM = `You write for Daily Discovery, a publication that helps curious adults learn one genuinely interesting thing a day. Aim for the register of a fine long-form magazine piece, compressed: intelligent but accessible, clear and conversational, engaging without sensationalism, substantive without being academic.
+const SYSTEM = `You write for Daily Discovery, a magazine that helps curious adults learn one genuinely interesting thing a day. Aim for the register of a fine long-form magazine feature: intelligent but accessible, clear and conversational, engaging without sensationalism, substantive without being academic.
 
-Shape the piece around the material, not a template. Open where the story or the idea is most alive. Use section headings where they help a reader find their way; let some sections run long and others short. For stories, give narrative, context and why it mattered. For explanations, give mechanisms and causes, so the reader could explain the how and why to a friend.
+You are given research material: excerpts from the sources gathered for this piece. Read it as a journalist would. Build an original feature from it, not a summary of each source:
+- Find the story or the question at its heart and open where it is most alive.
+- For stories, give narrative, context and why it mattered. For explanations, show how and why things work, so the reader could explain it to a friend.
+- Let the material decide the shape. Use headings where they help a reader; vary section length; no template.
+- Be concrete: names, places, dates, numbers and mechanisms, from the sources.
 
-Avoid: generic AI openings ("Imagine...", "Have you ever wondered...", "In the annals of history..."), more than one rhetorical question, clickbait or manufactured drama, superlatives the evidence doesn't support, closing morals or summaries ("In conclusion...", "It reminds us that..."), and lists of facts in place of an argument.
+Accuracy:
+- Base factual statements on the research material. You may explain, connect and interpret, but frame inferences as such ("which suggests...", "historians read this as...").
+- Don't add specific facts — dates, figures, names, quotations — that aren't in the material. If something important is missing, write around it rather than filling it in from memory.
+- Where sources disagree or are uncertain, say so plainly.
+- Weigh sources: prefer scholarly, institutional and primary material over weaker pages, and ignore anything that looks unreliable.
+- Quote only words that appear in the material, and attribute them.
 
-Evidence rules — these are checked, sentence by sentence, after you write:
-- Every factual statement must rest on the numbered claims provided. You may combine, order and paraphrase claims, and draw connections between them, but do not add names, dates, numbers, places, causes, firsts, or characterisations that the claims don't contain. That includes background facts you are confident about.
-- Sentences that frame, transition or pose the question without asserting facts need no claim.
-- Present disputed and uncertain claims as such ("historians disagree", "estimates range from").
-- Quote directly only from the supplied quotations, word for word, and name who said or wrote it only if a claim says so.
-- In claim_map, list every sentence that states a fact with the claim IDs it rests on. Readers never see this map; it is used to check your work.`;
+Avoid: generic AI openings ("Imagine...", "Have you ever wondered...", "In the annals of history..."), more than one rhetorical question, clickbait, closing morals or summaries ("In conclusion...", "It reminds us that..."), padding, and lists of facts in place of an argument.`;
 
-export function ledgerForWriter(ledger: EvidenceLedger): string {
-  const sources = new Map(ledger.sources.map((s) => [s.id, s]));
-  const usable = ledger.claims.filter((c) => c.usable);
-  const lines = usable.map((c) => {
-    const quotes = c.evidence
-      .filter((e) => e.verified)
-      .map((e) => `    "${e.quote}" — ${e.source_id} (${sources.get(e.source_id)?.authority ?? "unrated"})`)
-      .join("\n");
-    const flag = c.status === "supported" ? "" : ` [${c.status.toUpperCase()}${c.note ? `: ${c.note}` : ""}]`;
-    return `${c.id}. ${c.statement}${flag}\n${quotes}`;
-  });
-  const conflicts = ledger.conflicts.map((c) => `- ${c.summary} (claims ${c.claim_ids.join(", ")})`).join("\n");
-  const sourceList = [...new Set(usable.flatMap((c) => c.evidence.filter((e) => e.verified).map((e) => e.source_id)))]
-    .map((id) => sources.get(id)!)
-    .map((s) => `${s.id}: ${s.title} (${s.authority ?? "unrated"})`)
-    .join("\n");
-  return `<claims>\n${lines.join("\n\n")}\n</claims>\n\n<conflicts>\n${conflicts || "None recorded."}\n</conflicts>\n\n<sources>\n${sourceList}\n</sources>`;
-}
-
-export interface RevisionRequest {
-  previous: DraftArticle;
-  problems: string[];
+/** The research material as the writer and reviewer see it, grouped by source. */
+export function researchForModel(pack: ResearchPack): string {
+  const bySource = new Map<string, string[]>();
+  for (const p of pack.passages) bySource.set(p.source_id, [...(bySource.get(p.source_id) ?? []), p.text]);
+  return [...bySource.entries()]
+    .map(([id, texts]) => {
+      const s = pack.sources.find((x) => x.id === id)!;
+      const kind = s.origin === "openalex" ? "scholarly abstract" : s.origin === "wikipedia" ? "encyclopedia" : "web page";
+      return `<source id="${id}" title="${s.title.replace(/"/g, "'")}" url="${s.url}" kind="${kind}">\n${texts.join("\n\n[…]\n\n")}\n</source>`;
+    })
+    .join("\n\n");
 }
 
 export async function writeArticle(input: {
   topic: string;
   angle: string;
   contentType: ContentType;
-  ledger: EvidenceLedger;
+  pack: ResearchPack;
   tracker: CostTracker;
   reserveUsd: number;
-  revision?: RevisionRequest;
-  /** Override the configured writer model (used by the model comparison script). */
+  /** Override the configured writer model (e.g. to compare Opus and Sonnet). */
   settings?: ModelSettings;
 }): Promise<DraftArticle> {
-  let prompt = `Write today's discovery.
+  const prompt = `Write today's discovery.
 
 Topic: ${input.topic}
 Content type: ${input.contentType.toUpperCase()}
 What the reader should understand by the end: ${input.angle}
-Length: ${WORD_TARGET.min}-${WORD_TARGET.max} words of body text; about 750 is ideal.
+Length: roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words of body text where the material warrants it; substance matters more than length.
 
-${ledgerForWriter(input.ledger)}`;
-
-  if (input.revision) {
-    prompt += `
-
-REVISION. A fact-checker found these problems in your previous draft:
-${input.revision.problems.map((p) => `- ${p}`).join("\n")}
-
-Rewrite the article so every problem is fixed: cut or correct unsupported statements, restore hedging, and keep everything that was good. Return the complete article and a complete claim_map.
-
-<previous_draft>
-${JSON.stringify({ ...input.revision.previous, claim_map: undefined })}
-</previous_draft>`;
-  }
+<research>
+${researchForModel(input.pack)}
+</research>`;
 
   return structured({
-    stage: input.revision ? "revise" : "write",
+    stage: "write",
     settings: input.settings ?? stages.write,
     schema: ArticleSchema,
     system: SYSTEM,

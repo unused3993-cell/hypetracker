@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!current) return NextResponse.json({ error: "Discovery not found." }, { status: 404 });
     const why =
       action === "approve"
-        ? `Only discoveries that passed factual verification can be approved; this one is "${current.generation_status}".`
+        ? `Only discoveries that passed editorial review can be approved; this one is "${current.generation_status}".`
         : `A "${current.generation_status}" discovery can't be rejected.`;
     return NextResponse.json({ error: why }, { status: 409 });
   }

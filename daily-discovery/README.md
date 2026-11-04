@@ -1,7 +1,7 @@
 # Daily Discovery: content engine
 
 Daily Discovery publishes one well-sourced article a day. This app contains:
-- **The content pipeline.** It picks a topic, gathers sources, records the evidence, writes an article from that evidence, checks every factual statement against it, and holds the article for an editor to approve.
+- **The content pipeline.** It picks a topic, gathers about five reputable sources, writes a feature from them, has the article checked and corrected against those sources, and holds it for an editor to approve.
 - **The reader screens:** Today, the Library and individual issues.
 - **A test bench** for running and reviewing the pipeline.
 
@@ -28,7 +28,7 @@ Demo mode shows the reader experience without Anthropic or Supabase. It contains
 | `/library` | **Library**: every approved discovery, filterable by History, Science or Technology |
 | `/discoveries/[id]` | One issue, with Previous/Next navigation |
 | `/bench` | **Test bench**: every discovery in any status |
-| `/bench/[id]` | One discovery's evidence ledger, verification results, cost per stage, generation log, and **Approve / Reject** |
+| `/bench/[id]` | One discovery's sources, editorial review and corrections, cost per stage, generation log, and **Approve / Reject** |
 
 ## Setup
 
@@ -46,127 +46,93 @@ Demo mode shows the reader experience without Anthropic or Supabase. It contains
    Web search must be enabled for your organization in the Anthropic Console, because the pipeline uses it as a fallback.
 4. **Run** `npm run dev`, then generate from `/bench`, or run `npm run generate` from the terminal.
 
-## Generating and reviewing one article
+## Live test without a database
 
 ```bash
-npm run generate -- --eclipse      # the 1919 eclipse test topic
-npm run generate                   # a topic chosen from the interest profile
+npm run article -- --eclipse                          # the 1919 eclipse topic, end to end
+npm run article -- --eclipse --writer claude-opus-5-5 # same topic, Opus as writer
+npm run article                                       # a topic chosen from the interest profile
 ```
 
-1. The terminal prints each step, the final status, the cost, and a link to the article on the test bench.
-2. On that page you can check:
-   - the article
-   - each verification round, listing every statement with its verdict
-   - the evidence ledger: every claim with its quoted passage and that passage's position in the stored source text
-   - the excluded claims, and why each was excluded
-   - every source, with its stored text and credibility rating
-   - the cost of each stage
-3. A **verified** article can be approved. Approving publishes it to Today and the Library.
-4. A **needs review** article can only be rejected.
-
-## Live checks (with an API key)
-
-```bash
-npm run research-check                    # step 1 only: retrieval + evidence for the 1919 eclipse topic
-npm run research-check -- --force-search  # also exercise Anthropic web search
-npm run compare-writers -- --ledger runs/research-check-<time>.json --revise
-                                          # write + verify with Opus 5.5 and Sonnet 5.5 from that same ledger
-npm run compare-writers                   # or: research afresh, then compare
-```
-
-Passing `--ledger` makes both models write from exactly the evidence you reviewed in `research-check`. `compare-writers` saves a Markdown file per model (the full article, every verification verdict and the cost table) and one JSON file with the ledger, both drafts, all verification rounds and usage.
-
-`research-check` reports:
-- which sources were actually retrieved, and how many characters of text were kept from each
-- how many of the evidence quotes were found in that text
-- the shape of the raw web search response (result fields, and whether `cited_text` citations are present)
+This runs topic, research, writing and editorial review, without Supabase. It saves `runs/article-<time>.md` and a JSON file with the full research pack, the draft, the corrected article and the review. The Markdown file contains:
+- the finished article
+- every correction, before and after
+- the sources and what was retrieved from each
 - the cost of each stage
 
-`compare-writers` saves each model's article as Markdown in `runs/`, with its verification result and cost. Neither script needs Supabase.
+## Generating and reviewing with the app
+
+```bash
+npm run generate -- --eclipse      # or: npm run generate
+```
+
+1. The terminal prints each step, the status, the cost and a link to the test bench.
+2. On the bench page you can read the article and see:
+   - every review issue, with its correction (before and after) and whether it was applied
+   - the sources, with their stored text
+   - the cost of each stage
+   - the full log
+3. A **verified** article can be approved, which publishes it. A **needs review** article has unresolved substantive issues, so it can only be rejected.
 
 ## How the pipeline works
 
 **1. Topic** (`lib/topics.ts`, Claude Sonnet 5.5, low effort)
-- One call proposes 8 candidate topics, each with search terms.
-- Category balance, novelty and duplicate checks work as before.
+- Proposes candidates from the interest profile and past articles, each with search terms.
 
-**2. Retrieval** (`lib/retrieval.ts`, no model)
-- Free sources are fetched in code:
-  - the English Wikipedia article
-  - up to 6 pages that Wikipedia cites, one per site, skipping catalogues, paywalls and PDFs
+**2. Research** (`lib/retrieval.ts`, `lib/passages.ts`, no model)
+- Sources are fetched in code, and their readable text is stored:
+  - the Wikipedia article
+  - the pages it cites, skipping catalogues, bibliographic databases and paywalls; arXiv papers are read through their HTML or abstract pages
   - OpenAlex scholarly abstracts
-- Readable text is extracted from each page and stored.
-- **Web search is a fallback.** It runs only when fewer than 3 independent (non-encyclopedia) sources were retrieved:
-  - Claude Haiku 5.5 runs at most 3 searches.
-  - The pipeline keeps the result URLs and any `cited_text` excerpts, then fetches the pages itself.
-  - Search results contain no readable page text, so a result that wasn't fetched is recorded as `search_result_only` and never counts as evidence.
+- **Web search tops up** when there are fewer than about 5 full-text sources: Claude Haiku 5.5, at most 3 searches. The pipeline then fetches the result pages itself.
+- The most relevant excerpts, about 48,000 characters across the sources, go to the writer.
+- A topic is rejected if there's too little material: fewer than 3 sources, or less than 8,000 characters.
 
-**3. Passages** (`lib/passages.ts`, no model)
-- Sources are split into paragraph-sized passages.
-- About 30,000 characters of the most relevant ones are kept, ranked by BM25 keyword scoring.
+**3. Writing** (`lib/writer.ts`, Claude Sonnet 5.5 by default; set `MODEL_WRITE` to change)
+- The writer reads the actual source excerpts and writes an original feature, roughly 1,000–1,500 words where the material warrants.
+- Structure is free.
+- It records which sources each section draws on, and lists any uncertainties for the reader's note.
 
-**4. Evidence ledger** (`lib/evidence.ts`, Claude Haiku 5.5)
-- The model proposes claims, each with a verbatim quote from a passage, and rates every source's authority and relevance.
-- **Code then checks each quote against the stored source text** (`lib/quotes.ts`):
-  - It ignores harmless differences: case, whitespace, quote and dash styles, and `...` elisions.
-  - It records where the quote sits in the source.
-  - Claims without a matching quote are excluded.
-- **Credibility rules** consider both the source's authority and the type of claim:
-  - A routine fact needs one acceptable source.
-  - A precise or contested claim (a figure, date, quotation, superlative, cause or interpretation) needs a primary, scholarly or institutional source, or two acceptable sources on different sites.
-  - Unreliable sources never count.
-- Conflicting evidence is recorded explicitly.
-- **A topic is rejected** unless it has at least 10 usable claims, from at least 3 sources on at least 2 sites, including at least one source that isn't an encyclopedia. The next candidate is then tried, up to 2 topics.
+**4. Editorial review** (`lib/review.ts`, Claude Sonnet 5.5)
+- One call checks facts, dates, numbers, explanations and interpretations against the same material.
+- It flags factual errors, unsupported specifics, misleading framing and substantive omissions, and allows reasonable explanation and clearly framed inference.
+- For each issue it proposes a targeted correction, which code applies to the article.
+- A **substantive** issue whose correction can't be applied stays unresolved. That article becomes `needs_review` and can't be approved.
 
-**5. Writing** (`lib/writer.ts`, Claude Opus 5.5)
-- The writer sees only the usable claims, with their quotes, the disputes and the source list.
-- Structure is up to the writer.
-- It also returns an internal **claim map** linking each factual sentence to its claims. Readers never see it.
-
-**6. Verification** (`lib/verify.ts`, Claude Sonnet 5.5)
-- A separate model lists every material factual assertion in the article itself, including background "common knowledge".
-- It judges each one against the quotes. The verdicts are: supported, partially supported, unsupported, contradicted, misleading context, overstated, or uncertainty not acknowledged.
-- Code then cross-checks the claim IDs that the verifier and the writer cite. A citation of a missing or excluded claim never counts as support.
-
-**7. Revision**
-- At most once, if anything other than "supported" remains, including partially supported statements.
-- The whole revised article is **re-verified**.
-
-**8. Status.** Nothing is published automatically.
-- `verified`: every statement is supported and the structure is complete. This is the only status an editor can approve.
-- `needs_review`: verification failed, or the budget didn't allow a revision. It can only be rejected.
-- `failed`: no topic had enough evidence, or a hard error occurred.
-- `approved` or `rejected`: the editor's decision. `published_at` is set only on approval.
-
-Everything is stored for later inspection:
-- the evidence ledger (`evidence`), including each source's retrieved text
-- every verification round and the claim map (`validation`)
-- cost per stage (`usage`)
-- the full log
+**5. Status.** Nothing is published automatically.
+- `verified`: passed editorial review. Only these can be approved.
+- `needs_review`, `failed`, `approved`, `rejected`: as above.
+- Sources with URLs, the research pack (`evidence`), the review (`validation`), the cost per stage (`usage`) and the log are all stored.
 
 ## Cost control
 
 - **Configuration.** Every stage's model, effort and output cap can be set by environment variable (see `.env.example` and `lib/config.ts`).
-- **Hard cap.** Before each model call, a worst-case cost is estimated from the prompt size, the full output cap, and the search count with an allowance for result tokens. The call is refused if it could take the run past `BUDGET_MAX_USD`, which defaults to $0.35.
-- **Money reserved for verification:**
-  - Research holds back enough to write *and* verify.
-  - Writing holds back enough to verify.
-  - So the budget can stop a revision or a topic attempt, but it never skips verification.
-- **Actual cost.** After each call, the token usage the API reported is priced and stored for that stage, including fallback iterations at the price of the model that actually served them.
-- **Prices** are in `lib/config.ts`, taken from Anthropic's documentation (as of 2026-10-06). Check them against Console billing.
+- **Hard cap.** Before each model call, a worst-case cost is estimated from the prompt size, the full output cap and the search count. The call is refused if it could take the run past `BUDGET_MAX_USD`, which defaults to $0.35.
+- **Money reserved for review.** Research holds back enough to write *and* review; writing holds back enough to review. So review is never skipped to save money.
+- **Actual cost.** After each call, the token usage the API reported is priced and stored for that stage.
+- **Prices** are in `lib/config.ts`, taken from Anthropic's documentation (as of 2026-10-06).
 
-Estimated typical cost is $0.13–0.20 per article. That figure hasn't been measured; run `compare-writers` or `generate` to get real numbers.
+**Estimated cost** (not measured):
+
+| Stage | Estimated cost |
+|---|---|
+| Topic | $0.01–0.03 |
+| Search, when used | $0.02–0.03 |
+| Writing (Sonnet) | $0.06–0.10 |
+| Review | $0.05–0.08 |
+| **Total** | **$0.15–0.25** |
 
 ## Tests
 
-`npm test` runs 25 tests with no keys or network:
-- unit tests for quote matching, HTML extraction, passage selection, credibility and sufficiency rules, budget enforcement and claim-map checks
-- an end-to-end run against a mock Anthropic API and a mock Supabase, using fixture web pages:
-  - topic, evidence, writing, failed verification, revision and passing re-verification
-  - verified status, then approval
-  - the budget stop
-  - the web search fallback over a streamed response
+`npm test` runs 21 tests with no keys or network:
+- unit tests for retrieval, HTML extraction, passage selection, budget enforcement and applying corrections
+- end-to-end runs against a mock Anthropic API and a mock Supabase, using fixture web pages:
+  - a correction applied, then verified
+  - an unresolved issue, then `needs_review` and approval refused
+  - approve and reject
+  - the budget stop happening before any writing
+  - the web search fallback
 
-**What the tests don't show:** the mock models' answers are scripted, so the tests prove the code paths work, not that real models write or verify well. Real API behaviour, prompt quality and real costs still have to be checked with the live scripts above.
+The mock models' answers are scripted, so the tests prove the code paths work, not the quality of real writing or review. Use `npm run article` for that.
 
 `npm run typecheck` and `npm run build` should also pass.

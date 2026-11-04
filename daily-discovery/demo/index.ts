@@ -48,7 +48,6 @@ export function demoDiscoveries(now = new Date()): Discovery[] {
       validation: {
         issues: [],
         research_notes: a.uncertain.map(smart),
-        revisions: 0,
         disclaimer: "Demo content: written by hand for evaluating the design, not generated or checked by the pipeline.",
       },
       generation_log: [{ at: day.toISOString(), step: "demo", message: "Sample discovery bundled with demo mode; no generation took place." }],

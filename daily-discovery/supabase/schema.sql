@@ -34,8 +34,8 @@ create table if not exists public.discoveries (
   reading_time_minutes integer,
   sources              jsonb not null default '[]'::jsonb,   -- [{ id, title, url, link_status }]
   related_topics       jsonb not null default '[]'::jsonb,   -- string[]
-  validation           jsonb,         -- structural issues, verification rounds, claim map
-  evidence             jsonb,         -- evidence ledger: sources (with retrieved text), passages, claims, conflicts
+  validation           jsonb,         -- structural issues, editorial review and corrections
+  evidence             jsonb,         -- research pack: sources (with retrieved text) and the excerpts given to the writer
   usage                jsonb,         -- per-stage token usage and estimated cost
   generation_log       jsonb not null default '[]'::jsonb,   -- step-by-step pipeline log
   generation_status    text not null default 'generating'

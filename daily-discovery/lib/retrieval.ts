@@ -1,6 +1,6 @@
 // Source retrieval without a model: Wikipedia (and the pages it cites) and OpenAlex abstracts,
-// fetched and parsed in code. Anthropic web search is a capped fallback used only when free
-// sources don't give enough independent, non-encyclopedic material.
+// fetched and parsed in code. Anthropic web search is a capped fallback used when free sources
+// don't yield enough substantive full-text material.
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, assertNotRefused, baseParams } from "./claude";
@@ -51,7 +51,26 @@ async function getJson<T>(url: string): Promise<T | null> {
 // ── Web pages ──────────────────────────────────────────────────────────────
 
 /** Fetch one page and keep its readable text. Never throws; failures are recorded on the source. */
+/** arXiv PDF links → the HTML full text (newer papers) or the abstract page. */
+export function arxivAlternates(url: string): string[] | null {
+  const m = url.match(/^https?:\/\/(?:www\.)?arxiv\.org\/(?:pdf|abs|html)\/([\w.\/-]+?)(?:v\d+)?(?:\.pdf)?$/i);
+  return m ? [`https://arxiv.org/html/${m[1]}`, `https://arxiv.org/abs/${m[1]}`] : null;
+}
+
 export async function fetchPage(url: string, origin: SourceOrigin, titleHint = ""): Promise<Omit<SourceRecord, "id">> {
+  const alternates = arxivAlternates(url);
+  if (alternates) {
+    let last: Omit<SourceRecord, "id"> | null = null;
+    for (const alt of alternates) {
+      last = await fetchHtml(alt, origin, titleHint);
+      if (last.content_status === "retrieved") return last;
+    }
+    return last!;
+  }
+  return fetchHtml(url, origin, titleHint);
+}
+
+async function fetchHtml(url: string, origin: SourceOrigin, titleHint: string): Promise<Omit<SourceRecord, "id">> {
   const base = { url, title: titleHint || url, origin };
   if (/\.pdf($|[?#])/i.test(url)) return { ...base, content_status: "skipped", detail: "PDF (not supported yet)" };
   try {
@@ -62,7 +81,7 @@ export async function fetchPage(url: string, origin: SourceOrigin, titleHint = "
     if (!type.includes("html")) return { ...base, content_status: "skipped", detail: `unsupported content type ${type || "unknown"}` };
     const html = (await res.text()).slice(0, 3_000_000);
     const { title, text } = extractReadableText(html);
-    if (text.length < 500) return { ...base, title: title || base.title, content_status: "fetch_failed", detail: "too little readable text (paywall, or rendered by JavaScript?)" };
+    if (text.length < 400) return { ...base, title: title || base.title, content_status: "fetch_failed", detail: "too little readable text (paywall, or rendered by JavaScript?)" };
     return {
       ...base,
       url: res.url || url,
@@ -88,8 +107,10 @@ async function inBatches<T, R>(items: T[], size: number, fn: (t: T) => Promise<R
 
 const WP = "https://en.wikipedia.org/w/api.php";
 
-// Link targets that are rarely readable HTML articles (catalogues, book scans, paywalls, social).
-const SKIP_REFERENCE_HOSTS = /(^|\.)((wikipedia|wikimedia|wikidata|wiktionary|wikisource)\.org|books\.google\.[a-z.]+|worldcat\.org|jstor\.org|doi\.org|amazon\.[a-z.]+|google\.[a-z.]+|youtube\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|viaf\.org|id\.loc\.gov|isni\.org|d-nb\.info|catalogue\.bnf\.fr|openlibrary\.org)$/i;
+// Link targets that are rarely readable articles: catalogues, bibliographic databases, book
+// scans, paywalls, social media. (Live test: Zenodo, ADS, Semantic Scholar and PubMed all
+// blocked the crawler or returned no article text.)
+const SKIP_REFERENCE_HOSTS = /(^|\.)((wikipedia|wikimedia|wikidata|wiktionary|wikisource)\.org|books\.google\.[a-z.]+|worldcat\.org|jstor\.org|doi\.org|amazon\.[a-z.]+|google\.[a-z.]+|youtube\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|viaf\.org|id\.loc\.gov|isni\.org|d-nb\.info|catalogue\.bnf\.fr|openlibrary\.org|zenodo\.org|adsabs\.harvard\.edu|semanticscholar\.org|pubmed\.ncbi\.nlm\.nih\.gov|researchgate\.net|academia\.edu|hathitrust\.org)$/i;
 
 export async function wikipediaSources(q: ResearchQuery): Promise<{ article: Omit<SourceRecord, "id"> | null; references: string[] }> {
   let title: string | null = null;
@@ -129,7 +150,7 @@ export async function wikipediaSources(q: ResearchQuery): Promise<{ article: Omi
   for (const raw of links?.parse?.externallinks ?? []) {
     const url = raw.startsWith("//") ? `https:${raw}` : raw;
     const host = hostOf(url);
-    if (!/^https?:/.test(url) || !host || SKIP_REFERENCE_HOSTS.test(host) || /\.pdf($|[?#])/i.test(url)) continue;
+    if (!/^https?:/.test(url) || !host || SKIP_REFERENCE_HOSTS.test(host) || (/\.pdf($|[?#])/i.test(url) && !arxivAlternates(url))) continue;
     if (seenHosts.has(host)) continue; // one page per site keeps sources independent
     seenHosts.add(host);
     references.push(url);
@@ -192,7 +213,7 @@ export const lastSearchResponse = () => lastSearch;
 export async function webSearchFallback(q: ResearchQuery, exclude: Set<string>, tracker: CostTracker, reserveUsd: number) {
   const s = stages.search;
   const max = config.research.maxSearches;
-  const system = `You find authoritative web pages for a fact-checked article. Run at most ${max} searches. Prefer museums, universities, scholarly and scientific organisations, primary-source archives and established reference or news publishers. Avoid content farms, forums, and AI-written pages. Reply with one line per page you recommend: URL — why it is authoritative.`;
+  const system = `You find reputable, substantive web pages for a magazine feature. Run at most ${max} searches. Prefer museums, universities, scholarly and scientific organisations, primary-source archives, and established reference or science-journalism publishers, in pages that can be read freely as HTML (avoid PDFs, paywalls, and login walls). Avoid content farms, forums, and AI-written pages. Reply with one line per page you recommend: URL — why it is reputable.`;
   const prompt = `Topic: ${q.topic}\nAngle: ${q.angle}\nSuggested queries: ${q.searchTerms.join(" | ")}`;
   // Each search adds result content to the model's context; budget ~8K tokens per search.
   const worst = worstCaseUsd(s.model, system.length + prompt.length, s.maxTokens, max, max * 8000);
@@ -234,9 +255,9 @@ export interface RetrievalResult {
   log: string[];
 }
 
-/** Count retrieved sources that are not encyclopedias (independent, citable material). */
-const independent = (sources: Omit<SourceRecord, "id">[]) =>
-  sources.filter((s) => s.content_status === "retrieved" && s.origin !== "wikipedia").length;
+/** Retrieved sources with substantial text (abstracts don't count). */
+const fullText = (sources: Omit<SourceRecord, "id">[]) =>
+  sources.filter((s) => s.content_status === "retrieved" && s.origin !== "openalex" && (s.text?.length ?? 0) >= 2000).length;
 
 export async function retrieveSources(q: ResearchQuery, tracker: CostTracker, reserveUsd: number, allowWebSearch = true, forceWebSearch = false): Promise<RetrievalResult> {
   const log: string[] = [];
@@ -255,7 +276,7 @@ export async function retrieveSources(q: ResearchQuery, tracker: CostTracker, re
   log.push(`OpenAlex: ${oa.length} abstracts`);
 
   let usedWebSearch = false;
-  if (allowWebSearch && (forceWebSearch || independent(all) < 3)) {
+  if (allowWebSearch && (forceWebSearch || fullText(all) < config.research.targetSources)) {
     usedWebSearch = true;
     const known = new Map(all.map((s) => [normalizeUrl(s.url), s]));
     const found = await webSearchFallback(q, new Set(), tracker, reserveUsd);
@@ -267,7 +288,9 @@ export async function retrieveSources(q: ResearchQuery, tracker: CostTracker, re
     const results = found.filter((r) => !known.has(normalizeUrl(r.url)));
     const toFetch = results.slice(0, config.research.maxSearchPages);
     const pages = await inBatches(toFetch, 4, (r) => fetchPage(r.url, "web_search", r.title));
-    pages.forEach((p, i) => (p.excerpts = toFetch[i].excerpts.length ? toFetch[i].excerpts : undefined));
+    pages.forEach((p, i) => {
+      if (toFetch[i].excerpts.length) p.excerpts = toFetch[i].excerpts;
+    });
     all.push(...pages);
     for (const r of results.slice(config.research.maxSearchPages)) {
       all.push({ url: r.url, title: r.title, origin: "web_search", content_status: "search_result_only", detail: "search result; page not fetched", excerpts: r.excerpts.length ? r.excerpts : undefined });

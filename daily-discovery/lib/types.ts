@@ -17,7 +17,7 @@ export interface Interest {
 export interface ArticleSection {
   heading: string;
   paragraphs: string[];
-  /** Derived from the internal claim map; never written by the model directly. */
+  /** Sources this section draws on (validated against the research pack). */
   source_ids: string[];
 }
 
@@ -37,14 +37,12 @@ export interface Source {
   link_detail?: string;
 }
 
-// ── Research & evidence ─────────────────────────────────────────────────────
+// ── Research ─────────────────────────────────────────────────────
 
 export type SourceOrigin = "wikipedia" | "wikipedia_reference" | "openalex" | "web_search";
 
-/** Whether we hold the source's own text. Only `retrieved` sources can back claims. */
+/** Whether we hold the source's own text. */
 export type ContentStatus = "retrieved" | "search_result_only" | "fetch_failed" | "skipped";
-
-export type Authority = "primary" | "scholarly" | "institutional" | "reference" | "journalism" | "popular" | "unreliable";
 
 export interface SourceRecord {
   id: string;
@@ -57,12 +55,8 @@ export interface SourceRecord {
   retrieved_at?: string;
   /** Extracted readable text (NFKC-normalised), capped. Present only when retrieved. */
   text?: string;
-  /** Excerpts the search API itself returned (citation cited_text). Not evidence-grade on their own. */
+  /** Excerpts the search API itself returned (citation cited_text), when any. */
   excerpts?: string[];
-  /** Filled in by evidence extraction. */
-  authority?: Authority;
-  relevance?: "high" | "medium" | "low";
-  credibility_note?: string;
 }
 
 export interface Passage {
@@ -74,77 +68,35 @@ export interface Passage {
   score: number;
 }
 
-export type ClaimStakes = "routine" | "precise_or_contested";
-
-export interface EvidenceQuote {
-  passage_id: string;
-  source_id: string;
-  quote: string;
-  /** Set by mechanical verification. */
-  verified: boolean;
-  /** Char offsets of the matched quote in the source's stored text. */
-  location?: { start: number; end: number };
-}
-
-export interface Claim {
-  id: string; // "C1"
-  statement: string;
-  stakes: ClaimStakes;
-  status: "supported" | "disputed" | "uncertain";
-  note?: string;
-  evidence: EvidenceQuote[];
-  /** Set by code: whether the writer may use this claim, and why not. */
-  usable: boolean;
-  exclusion_reason?: string;
-}
-
-export interface Conflict {
-  summary: string;
-  claim_ids: string[];
-  source_ids: string[];
-}
-
-export interface EvidenceLedger {
+/** What the writer and reviewer read: retrieved sources and the excerpts selected from them. */
+export interface ResearchPack {
   sources: SourceRecord[];
   passages: Passage[];
-  claims: Claim[];
-  conflicts: Conflict[];
-  sufficient: boolean;
-  sufficiency_reason: string;
 }
 
-// ── Verification ────────────────────────────────────────────────────────────
+// ── Editorial review ────────────────────────────────────────────────────────
 
-export type AssertionVerdict =
-  | "supported"
-  | "partially_supported"
-  | "unsupported"
-  | "contradicted"
-  | "misleading_context"
-  | "overstated"
-  | "uncertainty_not_acknowledged";
+export type ReviewIssueType = "factual_error" | "unsupported" | "misleading" | "omission";
 
-export interface AssertionCheck {
-  assertion: string;
-  location: string; // e.g. "intro-1", "s2-3"
-  claim_ids: string[];
-  verdict: AssertionVerdict;
-  note: string;
+export interface ReviewIssue {
+  type: ReviewIssueType;
+  /** substantive = would mislead a reader about something that matters; minor = imprecision or nuance. */
+  severity: "substantive" | "minor";
+  location: string; // "intro-1", "s2-3", "title", "subtitle"
+  excerpt: string; // the problem text, copied from the article
+  correction: string; // replacement text ("" = delete the excerpt); for omissions, text to append
+  explanation: string; // what the sources say
+  source_ids: string[];
+  /** Set by code: whether the correction was applied to the article. */
+  applied?: boolean;
 }
 
-export interface VerificationRound {
-  round: number; // 1 = first draft, 2 = after revision
-  assertions: AssertionCheck[];
+export interface EditorialReview {
+  issues: ReviewIssue[];
+  source_assessment: string;
   summary: string;
+  /** No substantive issue remains unresolved. */
   passed: boolean;
-  /** Mechanical problems found in the claim map (unknown claim IDs, etc.). */
-  map_issues: string[];
-}
-
-export interface ClaimMapEntry {
-  location: string;
-  anchor: string;
-  claim_ids: string[];
 }
 
 // ── Cost ────────────────────────────────────────────────────────────────────
@@ -185,9 +137,7 @@ export interface ValidationReport {
   issues: ValidationIssue[];
   /** Disputed or uncertain points to surface to readers. */
   research_notes: string[];
-  verification?: VerificationRound[];
-  claim_map?: ClaimMapEntry[];
-  revisions: number;
+  review?: EditorialReview;
   disclaimer: string;
 }
 
@@ -220,7 +170,8 @@ export interface Discovery {
   sources: Source[];
   related_topics: string[];
   validation: ValidationReport | null;
-  evidence?: EvidenceLedger | null;
+  /** Research pack: sources with retrieved text, and the excerpts given to the writer. */
+  evidence?: ResearchPack | null;
   usage?: UsageReport | null;
   generation_log: LogEntry[];
   generation_status: GenerationStatus;

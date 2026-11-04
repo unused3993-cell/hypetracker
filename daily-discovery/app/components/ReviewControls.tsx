@@ -39,7 +39,7 @@ export function ReviewControls({ id, status, demo }: { id: string; status: Gener
       {demo && <p className="muted">Demo mode: decisions are disabled.</p>}
       {!canApprove && (
         <p className="muted">
-          This article did not pass factual verification, so it can&rsquo;t be approved. You can reject it, or generate another.
+          This article has unresolved factual issues, so it can&rsquo;t be approved. You can reject it, or generate another.
         </p>
       )}
       <label htmlFor={`note-${id}`} className="muted">

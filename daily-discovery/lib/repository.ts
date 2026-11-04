@@ -16,7 +16,7 @@ export async function listAll(): Promise<Discovery[]> {
 export async function listPublished(): Promise<Discovery[]> {
   const all = await listAll();
   return all
-    .filter((d) => d.generation_status === "ready" && d.content)
+    .filter((d) => d.generation_status === "approved" && d.content)
     .sort((a, b) => (b.published_at ?? b.created_at).localeCompare(a.published_at ?? a.created_at));
 }
 

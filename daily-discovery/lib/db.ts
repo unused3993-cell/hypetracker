@@ -29,10 +29,14 @@ export async function listInterests(): Promise<Interest[]> {
   return (data ?? []).map((r) => ({ ...r, weight: Number(r.weight) }));
 }
 
+/** Everything except the (large) evidence ledger. */
+const LIST_COLUMNS =
+  "id, title, subtitle, category, subcategory, content_type, topic, content, word_count, reading_time_minutes, sources, related_topics, validation, usage, generation_log, generation_status, error, review_note, reviewed_at, created_at, published_at";
+
 export async function listDiscoveries(limit = 100): Promise<Discovery[]> {
   const { data, error } = await db()
     .from("discoveries")
-    .select("*")
+    .select(LIST_COLUMNS)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) fail("list discoveries", error);
@@ -70,4 +74,22 @@ export async function createDiscoveryRow(): Promise<string> {
 export async function updateDiscovery(id: string, patch: Partial<Omit<Discovery, "id" | "created_at">>) {
   const { error } = await db().from("discoveries").update(patch).eq("id", id);
   if (error) fail("update discovery", error);
+}
+
+export type ReviewAction = "approve" | "reject";
+
+/**
+ * Record an editor's decision. Only verified discoveries can be approved; the status
+ * condition is part of the update, so a concurrent change can't slip an unverified one through.
+ */
+export async function reviewDiscovery(id: string, action: ReviewAction, note: string): Promise<Discovery | null> {
+  const now = new Date().toISOString();
+  const allowed = action === "approve" ? ["verified"] : ["verified", "needs_review"];
+  const patch =
+    action === "approve"
+      ? { generation_status: "approved", published_at: now, reviewed_at: now, review_note: note || null }
+      : { generation_status: "rejected", published_at: null, reviewed_at: now, review_note: note || null };
+  const { data, error } = await db().from("discoveries").update(patch).eq("id", id).in("generation_status", allowed).select(LIST_COLUMNS).maybeSingle();
+  if (error) fail("record review decision", error);
+  return (data as Discovery | null) ?? null;
 }

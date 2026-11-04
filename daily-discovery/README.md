@@ -1,8 +1,9 @@
-# Daily Discovery: Phase 1 content engine
+# Daily Discovery: content engine
 
-This is the content pipeline for Daily Discovery. It picks one interesting topic, researches it on the web, writes a 600–900 word article from that research, checks the result automatically, and saves it to Supabase. A small local page lets you run the pipeline and inspect what it produced.
-
-This phase is only the engine and a test bench. It has no consumer UI, auth, notifications or quizzes.
+Daily Discovery publishes one well-sourced article a day. This app contains:
+- **The content pipeline.** It picks a topic, gathers sources, records the evidence, writes an article from that evidence, checks every factual statement against it, and holds the article for an editor to approve.
+- **The reader screens:** Today, the Library and individual issues.
+- **A test bench** for running and reviewing the pipeline.
 
 ## Demo mode (no credentials)
 
@@ -12,100 +13,157 @@ npm install
 npm run demo         # open http://localhost:3000
 ```
 
-Demo mode lets you try the reader experience without Anthropic or Supabase. It includes five hand-written sample discoveries (two history, two science, one technology), each with an illustrated plate. You can browse them on **Today** (`/`) and in the **Library** (`/library`), and step between issues with Previous/Next.
+Demo mode shows the reader experience without Anthropic or Supabase. It contains five hand-written sample discoveries, each with an illustration.
 
-- **Generation is simulated.** On the test bench the generate button plays back the pipeline's steps without calling any API, and `POST /api/generate` returns 403.
-- **The sample content is not from the pipeline.** I wrote it by hand. Its sources are real references, but they haven't been link-checked, and the pages label them that way.
-- **How to remove it.** Demo code lives in `demo/` (content, plates, data source). To remove demo mode, delete that folder, the lines marked `// demo` in `lib/repository.ts` and `app/components/Figure.tsx`, and the `demo` script in `package.json`.
+- **Generation is simulated.** On the test bench, the generate button plays back the pipeline's steps without calling an API.
+- **Disabled endpoints.** `POST /api/generate` and the review endpoint both return 403.
+- **The samples weren't produced by the pipeline,** and their sources are labelled "not link-checked".
+- **To remove demo mode,** delete `demo/`, the lines marked `// demo` in `lib/repository.ts` and `app/components/Figure.tsx`, and the `demo` script in `package.json`.
 
 ## Screens
 
 | Route | What it is |
 |---|---|
-| `/` | **Today**: the latest published discovery |
-| `/library` | **Library**: every published discovery, filterable by History, Science or Technology |
+| `/` | **Today**: the latest *approved* discovery |
+| `/library` | **Library**: every approved discovery, filterable by History, Science or Technology |
 | `/discoveries/[id]` | One issue, with Previous/Next navigation |
-| `/bench` | **Test bench**: every discovery in any status, with validation results, research notes and the generation log, plus the generate button |
+| `/bench` | **Test bench**: every discovery in any status |
+| `/bench/[id]` | One discovery's evidence ledger, verification results, cost per stage, generation log, and **Approve / Reject** |
 
 ## Setup
 
 **Requirements:** Node 20+ (tested on 22), a Supabase project and an Anthropic API key.
 
-1. **Install**
-   ```bash
-   cd daily-discovery
-   npm install
-   ```
-2. **Create the database.** In the Supabase dashboard, open **SQL Editor**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql) and run it. This creates the `interests` and `discoveries` tables and seeds the interest profile. You can run it again safely.
-3. **Configure credentials**
-   ```bash
-   cp .env.example .env.local
-   ```
-   | Variable | Where to get it |
-   |---|---|
-   | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys. **Web search and web fetch must be enabled for your organization** in the Console settings. |
-   | `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
-   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API keys: the `service_role` key, or a new `sb_secret_…` secret key. It is only used on the server and never sent to the browser. |
-   | `CLAUDE_MODEL` (optional) | Overrides the model. The default is `claude-opus-5-5`. |
-4. **Run**
-   ```bash
-   npm run dev          # open http://localhost:3000
-   ```
-   Click **Generate a new discovery**. One run usually takes 2–5 minutes, and the terminal shows its progress. You can also generate from the command line with `npm run generate`.
+1. **Install.** Run `cd daily-discovery && npm install`.
+2. **Set up the database.** In the Supabase SQL editor:
+   - **New project:** run [`supabase/schema.sql`](supabase/schema.sql).
+   - **Project created before the evidence pipeline:** run [`supabase/migrations/002_evidence_pipeline.sql`](supabase/migrations/002_evidence_pipeline.sql) instead. It adds the new columns. Articles that were previously `ready` become `verified`, so you'll need to approve them again before they reappear on Today.
+3. **Credentials.** Copy `.env.example` to `.env.local` and fill in:
+   - `ANTHROPIC_API_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY` (server-side only)
 
-Other commands: `npm test` runs the unit tests for the deterministic logic and needs no keys. `npm run typecheck` type-checks the code, and `npm run build` runs a production build.
+   Web search must be enabled for your organization in the Anthropic Console, because the pipeline uses it as a fallback.
+4. **Run** `npm run dev`, then generate from `/bench`, or run `npm run generate` from the terminal.
+
+## Generating and reviewing one article
+
+```bash
+npm run generate -- --eclipse      # the 1919 eclipse test topic
+npm run generate                   # a topic chosen from the interest profile
+```
+
+1. The terminal prints each step, the final status, the cost, and a link to the article on the test bench.
+2. On that page you can check:
+   - the article
+   - each verification round, listing every statement with its verdict
+   - the evidence ledger: every claim with its quoted passage and that passage's position in the stored source text
+   - the excluded claims, and why each was excluded
+   - every source, with its stored text and credibility rating
+   - the cost of each stage
+3. A **verified** article can be approved. Approving publishes it to Today and the Library.
+4. A **needs review** article can only be rejected.
+
+## Live checks (with an API key)
+
+```bash
+npm run research-check                    # step 1 only: retrieval + evidence for the 1919 eclipse topic
+npm run research-check -- --force-search  # also exercise Anthropic web search
+npm run compare-writers                   # research once, then write + verify with Opus 5.5 and Sonnet 5.5
+npm run compare-writers -- --revise       # include one revision round for each model
+```
+
+`research-check` reports:
+- which sources were actually retrieved, and how many characters of text were kept from each
+- how many of the evidence quotes were found in that text
+- the shape of the raw web search response (result fields, and whether `cited_text` citations are present)
+- the cost of each stage
+
+`compare-writers` saves each model's article as Markdown in `runs/`, with its verification result and cost. Neither script needs Supabase.
 
 ## How the pipeline works
 
-`lib/pipeline.ts` runs these steps in order. Each step is logged to the discovery's `generation_log`, and you can expand the log on the article page.
+**1. Topic** (`lib/topics.ts`, Claude Sonnet 5.5, low effort)
+- One call proposes 8 candidate topics, each with search terms.
+- Category balance, novelty and duplicate checks work as before.
 
-1. **Plan the category** (`lib/interests.ts`). It picks a top-level category using the interest weights, so History gets about 50% of discoveries. Categories that have been under-represented in the last 20 discoveries get a boost, and over-represented ones get less. The previous discovery's subcategory is always excluded, and a non-History category is never used twice in a row.
-2. **Build a candidate pool** (`lib/topics.ts`). Claude proposes 10 specific candidate topics in that category. It is given the last 3 discoveries, which it must not closely relate to, and every past title, which it must not overlap. Each candidate gets a score from 1 to 5 for relevance, substance, curiosity, source availability and novelty. The code then combines these scores and subtracts a penalty for word overlap with past topics. Candidates that overlap too much are dropped.
-3. **Research** (`lib/research.ts`). Claude researches the best candidate using Anthropic's server-side **web search** and **web fetch** tools, with sources ranked academic, museum, scientific and primary first. It writes structured notes: core facts, the narrative or mechanism, disputed or uncertain points, myths to avoid, and an assessment of each source. The notes end with a verdict: SUFFICIENT or INSUFFICIENT.
-   - The code builds the source list **only from URLs that actually appeared in search or fetch results**. Any other URL in the notes is removed.
-   - The code overrules a SUFFICIENT verdict if the notes rely on fewer than 3 retrieved sources, or on sources from fewer than 2 domains.
-   - If the topic is rejected, the next candidate is researched, up to 3 attempts.
-4. **Write** (`lib/writer.ts`). Claude writes the article from the research notes only, as structured JSON: title, subtitle, introduction, sections with headings, the source IDs each section relies on, and 3 related topics.
-5. **Validate** (`lib/validate.ts`). Code checks the required fields, the structure, the 600–900 word target, that sources are present and every cited ID is real, duplicate titles, quotations, vague attribution and rhetorical questions.
-6. **Claim review**. A second Claude pass compares every specific claim in the article against the research notes. It flags claims that are unsupported, contradicted, or stated as settled when the research says they are disputed.
-7. **Revise once** if the review flagged a serious claim, a check found an error, or the word count is outside the target. The revised draft is validated and reviewed again.
-8. **Link check**. Each source URL is requested. Unreachable links (404, DNS failure) are removed from the article. Sites that block bots (403/429) are marked *unverified* and kept.
-9. **Save** with one of these statuses:
-   - `ready`: passed every check. `published_at` is set.
-   - `needs_review`: has remaining claim flags, a word count outside the target, a section with no sources, or fewer than 3 working sources.
-   - `failed`: a hard error occurred or no topic had enough sources. The error and the full log are stored.
+**2. Retrieval** (`lib/retrieval.ts`, no model)
+- Free sources are fetched in code:
+  - the English Wikipedia article
+  - up to 6 pages that Wikipedia cites, one per site, skipping catalogues, paywalls and PDFs
+  - OpenAlex scholarly abstracts
+- Readable text is extracted from each page and stored.
+- **Web search is a fallback.** It runs only when fewer than 3 independent (non-encyclopedia) sources were retrieved:
+  - Claude Haiku 5.5 runs at most 3 searches.
+  - The pipeline keeps the result URLs and any `cited_text` excerpts, then fetches the pages itself.
+  - Search results contain no readable page text, so a result that wasn't fetched is recorded as `search_result_only` and never counts as evidence.
 
-The article page labels these checks as automated. Passing them **does not mean the article has been fact-checked**. The claim review only compares the article with its own research notes, so it can't catch a mistake that is already in those notes.
+**3. Passages** (`lib/passages.ts`, no model)
+- Sources are split into paragraph-sized passages.
+- About 30,000 characters of the most relevant ones are kept, ranked by BM25 keyword scoring.
 
-## Data model (`supabase/schema.sql`)
+**4. Evidence ledger** (`lib/evidence.ts`, Claude Haiku 5.5)
+- The model proposes claims, each with a verbatim quote from a passage, and rates every source's authority and relevance.
+- **Code then checks each quote against the stored source text** (`lib/quotes.ts`):
+  - It ignores harmless differences: case, whitespace, quote and dash styles, and `...` elisions.
+  - It records where the quote sits in the source.
+  - Claims without a matching quote are excluded.
+- **Credibility rules** consider both the source's authority and the type of claim:
+  - A routine fact needs one acceptable source.
+  - A precise or contested claim (a figure, date, quotation, superlative, cause or interpretation) needs a primary, scholarly or institutional source, or two acceptable sources on different sites.
+  - Unreliable sources never count.
+- Conflicting evidence is recorded explicitly.
+- **A topic is rejected** unless it has at least 10 usable claims, from at least 3 sources on at least 2 sites, including at least one source that isn't an encyclopedia. The next candidate is then tried, up to 2 topics.
 
-- **`interests`** has the columns `category`, `subcategory`, `weight` and `active`. To change the profile, edit the weights in this table. They are relative to each other and don't need to sum to 100.
-- **`discoveries`** has the fields from the brief (title, subtitle, category, content type, content, reading time, sources, related topics, created and published dates, generation status). It also has these columns:
-  - `subcategory` and `topic`, used for diversity and de-duplication
-  - `word_count`
-  - `validation`: the issues found, the claim review, the disputed points and the full research notes
-  - `generation_log` and `error`
+**5. Writing** (`lib/writer.ts`, Claude Opus 5.5)
+- The writer sees only the usable claims, with their quotes, the disputes and the source list.
+- Structure is up to the writer.
+- It also returns an internal **claim map** linking each factual sentence to its claims. Readers never see it.
 
-  The article content is stored as JSON (`{ introduction: string[], sections: [{ heading, paragraphs[], source_ids[] }] }`) rather than as one block of text.
+**6. Verification** (`lib/verify.ts`, Claude Sonnet 5.5)
+- A separate model lists every material factual assertion in the article itself, including background "common knowledge".
+- It judges each one against the quotes. The verdicts are: supported, partially supported, unsupported, contradicted, misleading context, overstated, or uncertainty not acknowledged.
+- Code then cross-checks the claim IDs that the verifier and the writer cite. A citation of a missing or excluded claim never counts as support.
 
-RLS is enabled on both tables with no policies. Only the server, using the service-role key, can read or write them.
+**7. Revision**
+- At most once, if anything other than "supported" remains, including partially supported statements.
+- The whole revised article is **re-verified**.
 
-## Technical decisions
+**8. Status.** Nothing is published automatically.
+- `verified`: every statement is supported and the structure is complete. This is the only status an editor can approve.
+- `needs_review`: verification failed, or the budget didn't allow a revision. It can only be rejected.
+- `failed`: no topic had enough evidence, or a hard error occurred.
+- `approved` or `rejected`: the editor's decision. `published_at` is set only on approval.
 
-- **One Next.js app with no extra services.** The pipeline is plain TypeScript modules called from one API route (`POST /api/generate`) and from one CLI script. There is no job queue. A run happens inside one request, which is fine locally. A hosted deployment would need a background job, because runs take minutes.
-- **Anthropic's server-side web search and web fetch** handle research, so there is no separate search API key. Search results come with URL citations. Those citations, plus every URL the tools returned, form the only list of sources the writer may use. This is how the pipeline keeps invented URLs out of the article.
-- **Research, writing and review are separate model calls.** The writer sees only the research notes, so anything it adds beyond them can be detected. The reviewer is a separate call, so it doesn't approve its own writing.
-- **Structured outputs** (Zod schemas via `messages.parse`) for topic candidates, articles and reviews, so the output's structure is guaranteed and checked again.
-- **Model and settings:** `claude-opus-5-5` with adaptive thinking. Effort is `medium` for topic selection and claim review, and `high` for research and writing.
-  - Server-side refusal fallback (`fallbacks: "default"`) is on. If a safety classifier declines a request, which is most likely on a military-history topic, the API retries it on a substitute model instead of failing the run. To turn this off, remove `fallbacks` and the beta header in `lib/claude.ts`.
-- **Duplicate detection has two layers.** Claude scores novelty against the full list of past titles, and the code also compares content words between topics. The word comparison is crude on purpose: it catches near-identical topics, and the model handles conceptual overlap.
+Everything is stored for later inspection:
+- the evidence ledger (`evidence`), including each source's retrieved text
+- every verification round and the claim map (`validation`)
+- cost per stage (`usage`)
+- the full log
 
-## Cost and time
+## Cost control
 
-Each run makes about 4–6 model calls. The research call does up to 8 searches and 6 page fetches, and most of the cost is the fetched page content. Check the Anthropic Console usage page after a few runs to see the real cost per discovery. To make runs cheaper, lower `max_uses` in `lib/research.ts` or set a cheaper model with `CLAUDE_MODEL`.
+- **Configuration.** Every stage's model, effort and output cap can be set by environment variable (see `.env.example` and `lib/config.ts`).
+- **Hard cap.** Before each model call, a worst-case cost is estimated from the prompt size, the full output cap, and the search count with an allowance for result tokens. The call is refused if it could take the run past `BUDGET_MAX_USD`, which defaults to $0.35.
+- **Money reserved for verification:**
+  - Research holds back enough to write *and* verify.
+  - Writing holds back enough to verify.
+  - So the budget can stop a revision or a topic attempt, but it never skips verification.
+- **Actual cost.** After each call, the token usage the API reported is priced and stored for that stage, including fallback iterations at the price of the model that actually served them.
+- **Prices** are in `lib/config.ts`, taken from Anthropic's documentation (as of 2026-10-06). Check them against Console billing.
 
-## What's verified
+Estimated typical cost is $0.13–0.20 per article. That figure hasn't been measured; run `compare-writers` or `generate` to get real numbers.
 
-- Unit tests cover category weighting (History stays at about 50% over 400 simulated days, with no back-to-back subcategory), building the source list from search results and removing URLs that weren't retrieved, the minimum-source rule, word counts and duplicate detection, and all structural validation rules.
-- The whole pipeline, the API route and the pages were run end to end against stand-in Anthropic and Supabase servers. That run covered streaming with citations, the revision loop, link checking, duplicate rejection and saving.
-- **Not yet run against the real Anthropic API or a real Supabase project.** No credentials were available in the development environment. The first real run is the real test of prompt quality and API compatibility.
+## Tests
+
+`npm test` runs 25 tests with no keys or network:
+- unit tests for quote matching, HTML extraction, passage selection, credibility and sufficiency rules, budget enforcement and claim-map checks
+- an end-to-end run against a mock Anthropic API and a mock Supabase, using fixture web pages:
+  - topic, evidence, writing, failed verification, revision and passing re-verification
+  - verified status, then approval
+  - the budget stop
+  - the web search fallback over a streamed response
+
+**What the tests don't show:** the mock models' answers are scripted, so the tests prove the code paths work, not that real models write or verify well. Real API behaviour, prompt quality and real costs still have to be checked with the live scripts above.
+
+`npm run typecheck` and `npm run build` should also pass.

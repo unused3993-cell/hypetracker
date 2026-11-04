@@ -17,7 +17,10 @@ export default async function Bench() {
   return (
     <div className="bench">
       <h1>Test bench</h1>
-      <p className="muted">Pipeline diagnostics: every discovery in any status, with validation and logs.</p>
+      <p className="muted">
+        Every discovery in any status. Generated articles stop at <strong>verified</strong> or <strong>needs review</strong>; only verified
+        ones can be approved for publication.
+      </p>
       <GenerateButton demo={demo} />
       {loadError && <p className="error">{loadError}</p>}
       <h2>Discoveries ({discoveries.length})</h2>
@@ -32,7 +35,7 @@ export default async function Bench() {
               <td>
                 <a href={`/bench/${d.id}`}>{d.title ?? d.topic ?? "(no topic selected)"}</a>
                 <div className="muted">
-                  {[d.category, d.subcategory, d.content_type, d.word_count && `${d.word_count} words`]
+                  {[d.category, d.subcategory, d.content_type, d.word_count && `${d.word_count} words`, d.usage && `$${d.usage.total_cost_usd.toFixed(3)}`]
                     .filter(Boolean)
                     .join(" · ")}
                 </div>

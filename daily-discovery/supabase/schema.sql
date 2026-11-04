@@ -1,5 +1,6 @@
 -- Daily Discovery — Phase 1 schema.
 -- Run once in the Supabase SQL editor (or `supabase db push` if you use the CLI).
+-- Existing projects created before the evidence pipeline: run migrations/002_evidence_pipeline.sql instead.
 
 create extension if not exists pgcrypto;
 
@@ -33,11 +34,15 @@ create table if not exists public.discoveries (
   reading_time_minutes integer,
   sources              jsonb not null default '[]'::jsonb,   -- [{ id, title, url, link_status }]
   related_topics       jsonb not null default '[]'::jsonb,   -- string[]
-  validation           jsonb,         -- automated check results + claim review (NOT a fact-check)
+  validation           jsonb,         -- structural issues, verification rounds, claim map
+  evidence             jsonb,         -- evidence ledger: sources (with retrieved text), passages, claims, conflicts
+  usage                jsonb,         -- per-stage token usage and estimated cost
   generation_log       jsonb not null default '[]'::jsonb,   -- step-by-step pipeline log
   generation_status    text not null default 'generating'
-                       check (generation_status in ('generating', 'ready', 'needs_review', 'failed')),
+                       check (generation_status in ('generating', 'verified', 'needs_review', 'failed', 'approved', 'rejected')),
   error                text,
+  review_note          text,
+  reviewed_at          timestamptz,
   created_at           timestamptz not null default now(),
   published_at         timestamptz
 );

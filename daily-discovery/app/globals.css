@@ -611,7 +611,16 @@ main {
   background: var(--paper-2);
   margin-right: 6px;
 }
-.bench .ready { background: #dcfce7; color: #14532d; }
+.bench .verified { background: #dcfce7; color: #14532d; }
+.bench .approved { background: #dbeafe; color: #1e3a8a; }
+.bench .rejected { background: var(--paper-2); color: var(--muted); }
+.bench .review textarea { width: 100%; font: inherit; margin: 4px 0 10px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); }
+.bench .review-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.bench button.secondary { background: transparent; color: var(--ink); }
+.bench .bench-article { border-top: 1px solid var(--rule); margin-top: 20px; }
+.bench .bench-article h1 { font-size: 24px; }
+.bench .bench-article h2 { font-size: 18px; }
+.bench .panel table { display: block; overflow-x: auto; }
 .bench .needs_review { background: #fef9c3; color: #713f12; }
 .bench .failed { background: #fee2e2; color: #7f1d1d; }
 .bench .generating { background: #dbeafe; color: #1e3a8a; }

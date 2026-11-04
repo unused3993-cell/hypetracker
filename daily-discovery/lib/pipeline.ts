@@ -1,179 +1,155 @@
-import { config } from "./config";
 import { describeError } from "./claude";
+import { config, stages } from "./config";
+import { BudgetExceeded, CostTracker, worstCaseUsd } from "./cost";
 import { createDiscoveryRow, listHistory, listInterests, updateDiscovery } from "./db";
+import { uncertaintyNotes } from "./evidence";
 import { DEFAULT_INTERESTS, planCategory } from "./interests";
-import { researchTopic, type ResearchResult } from "./research";
+import { researchTopic } from "./research";
+import type { ResearchQuery } from "./retrieval";
 import { readingTimeMinutes } from "./text";
 import { generateCandidates, type Candidate } from "./topics";
-import { checkLinks, validateDraft } from "./validate";
-import type { ClaimFlag, GenerationStatus, LogEntry, ValidationIssue, ValidationReport } from "./types";
-import { reviewClaims, writeArticle, type DraftArticle } from "./writer";
+import type { EvidenceLedger, GenerationStatus, LogEntry, Source, ValidationIssue, ValidationReport, VerificationRound } from "./types";
+import { validateDraft } from "./validate";
+import { revisionProblems, sectionSources, verifyArticle, verifyWorstCase } from "./verify";
+import { writeArticle, type DraftArticle } from "./writer";
 
 const DISCLAIMER =
-  "Automated checks only: structure, length, sourcing, link reachability, duplicates, and an AI comparison of the article against its own research notes. Passing these checks does not mean the article has been fact-checked.";
+  "Every factual statement was checked by a separate model against verbatim source quotations that were mechanically confirmed to exist in the retrieved sources. This is automated verification, not human fact-checking; an editor approves each article before publication.";
 
-const SERIOUS_FLAGS = new Set<ClaimFlag["verdict"]>(["unsupported", "contradicted", "uncertainty_not_acknowledged"]);
+const PRICING_NOTE =
+  "Costs are computed from token usage reported by the API, priced with the table in lib/config.ts (Anthropic documentation as of 2026-10-06). Check against Console billing.";
 
 export interface GenerationResult {
   id: string;
   status: GenerationStatus;
   title: string | null;
+  costUsd: number;
   error?: string;
 }
 
-export async function generateDiscovery(onLog?: (e: LogEntry) => void): Promise<GenerationResult> {
+/** Money to hold back during research so a sourced topic can always be written AND verified. */
+function writingReserve(): number {
+  return worstCaseUsd(stages.write.model, 30000, stages.write.maxTokens) + worstCaseUsd(stages.verify.model, 45000, stages.verify.maxTokens);
+}
+
+export async function generateDiscovery(onLog?: (e: LogEntry) => void, options: { topicOverride?: ResearchQuery & { contentType?: "story" | "explanation" } } = {}): Promise<GenerationResult> {
   const id = await createDiscoveryRow();
+  const tracker = new CostTracker(config.budget.maxUsd, config.budget.targetUsd);
   const log: LogEntry[] = [];
   let step = "setup";
+  let ledger: EvidenceLedger | null = null;
   const note = (message: string, data?: unknown) => {
     const entry: LogEntry = { at: new Date().toISOString(), step, message, ...(data === undefined ? {} : { data }) };
     log.push(entry);
     onLog?.(entry);
   };
-  const checkpoint = () => updateDiscovery(id, { generation_log: log }).catch(() => {});
+  const checkpoint = () => updateDiscovery(id, { generation_log: log, usage: tracker.report(PRICING_NOTE) }).catch(() => {});
 
   try {
-    // 1. Plan the category -------------------------------------------------
+    note(`budget: $${config.budget.maxUsd.toFixed(2)} max, $${config.budget.targetUsd.toFixed(2)} target; models: write ${stages.write.model}, verify ${stages.verify.model}, extract ${stages.extract.model}`);
+
+    // 1. Topic ---------------------------------------------------------------
     step = "plan";
     let interests = await listInterests();
-    if (interests.length === 0) {
-      note("interests table is empty; using built-in default profile");
-      interests = DEFAULT_INTERESTS;
-    }
-    // Exclude this run's own row and abandoned rows that never got a topic.
+    if (interests.length === 0) interests = DEFAULT_INTERESTS;
     const history = (await listHistory()).filter((h) => h.id !== id && (h.topic || h.title));
     const plan = planCategory(interests, history);
-    note(`category: ${plan.category} (${plan.reason})`);
+
+    let shortlist: Candidate[];
+    if (options.topicOverride) {
+      const t = options.topicOverride;
+      shortlist = [{ topic: t.topic, angle: t.angle, search_terms: t.searchTerms, content_type: t.contentType ?? "story", subcategory: plan.subcategories[0]?.subcategory ?? "", why_interesting: "", likely_sources: "", relevance: 5, substance: 5, curiosity: 5, source_availability: 5, novelty: 5, score: 0, similarity: 0, similar_to: null }];
+      note(`topic override: ${t.topic}`);
+    } else {
+      note(`category: ${plan.category} (${plan.reason})`);
+      step = "topics";
+      const candidates = await generateCandidates(plan, history, history, tracker);
+      shortlist = candidates.filter((c) => c.similarity < config.duplicateThreshold);
+      note(`${candidates.length} candidates, ${shortlist.length} not duplicates`, candidates.map((c) => ({ topic: c.topic, score: Number(c.score.toFixed(1)) })));
+      if (shortlist.length === 0) throw new Error("Every candidate topic duplicated an earlier discovery.");
+    }
     await checkpoint();
 
-    // 2. Candidate pool ----------------------------------------------------
-    step = "select";
-    const candidates = await generateCandidates(plan, history, history);
-    const shortlist = candidates.filter((c) => c.similarity < config.duplicateThreshold);
-    note(
-      `generated ${candidates.length} candidates; ${candidates.length - shortlist.length} dropped as too similar to past topics`,
-      candidates.map((c) => ({
-        topic: c.topic,
-        subcategory: c.subcategory,
-        type: c.content_type,
-        score: Number(c.score.toFixed(2)),
-        similar_to: c.similarity >= 0.25 ? c.similar_to : undefined,
-      })),
-    );
-    if (shortlist.length === 0) throw new Error("Every candidate topic duplicated an earlier discovery.");
-    await checkpoint();
-
-    // 3. Research, falling back to the next candidate if sources are insufficient
-    step = "research";
+    // 2. Research & evidence ---------------------------------------------------
     let chosen: Candidate | null = null;
-    let research: ResearchResult | null = null;
     for (const candidate of shortlist.slice(0, config.maxTopicAttempts)) {
+      step = "research";
       note(`researching: ${candidate.topic}`);
-      await updateDiscovery(id, { topic: candidate.topic, category: plan.category, subcategory: candidate.subcategory, content_type: candidate.content_type, generation_log: log });
-      const r = await researchTopic(candidate);
-      note(`${r.sufficient ? "sufficient" : "REJECTED"}: ${r.reason}`, {
-        searches: r.searches,
-        retrieved_urls: r.retrievedCount,
-        sources_used: r.sources.map((s) => s.url),
-      });
-      if (r.sufficient) {
+      await updateDiscovery(id, { topic: candidate.topic, category: plan.category, subcategory: candidate.subcategory, content_type: candidate.content_type });
+      const query: ResearchQuery = { topic: candidate.topic, angle: candidate.angle, searchTerms: candidate.search_terms?.length ? candidate.search_terms : [candidate.topic] };
+      const research = await researchTopic(query, tracker, writingReserve());
+      for (const line of research.log) note(line.message, line.data);
+      if (!research.ledger) continue;
+      ledger = research.ledger;
+      await updateDiscovery(id, { evidence: ledger, generation_log: log, usage: tracker.report(PRICING_NOTE) });
+      if (ledger.sufficient) {
         chosen = candidate;
-        research = r;
         break;
       }
     }
-    if (!chosen || !research)
-      throw new Error(`None of the top ${config.maxTopicAttempts} topics had sufficient credible sources. See the log for each rejection.`);
-    await checkpoint();
+    if (!chosen || !ledger?.sufficient) throw new Error(`No topic had enough verifiable evidence after ${config.maxTopicAttempts} attempt(s). See the log.`);
 
-    // 4. Write → validate → review → (revise once) --------------------------
+    // 3. Write → verify → (revise → re-verify) ---------------------------------
     const pastTitles = history.map((h) => h.title).filter((t): t is string => !!t);
     step = "write";
-    let draft: DraftArticle = await writeArticle({
-      topic: chosen.topic,
-      angle: chosen.angle,
-      contentType: chosen.content_type,
-      dossier: research.dossier,
-      sources: research.sources,
-    });
-    let checked = validateDraft(draft, research.sources, pastTitles, config.duplicateThreshold);
-    note(`draft: "${draft.title}" — ${checked.wordCount} words`, checked.issues);
-    await checkpoint();
+    let draft: DraftArticle = await writeArticle({ topic: chosen.topic, angle: chosen.angle, contentType: chosen.content_type, ledger, tracker, reserveUsd: verifyWorstCase(ledger) });
+    let structure = validateDraft(draft, pastTitles, config.duplicateThreshold);
+    note(`draft: "${draft.title}" — ${structure.wordCount} words`, structure.issues);
 
-    step = "review";
-    let review = await reviewClaims(draft, research.dossier);
-    note(`claim review: ${review.flags.length} flag(s). ${review.summary}`, review.flags);
+    step = "verify";
+    const rounds: VerificationRound[] = [await verifyArticle({ article: draft, ledger, round: 1, tracker })];
+    note(`verification: ${rounds[0].passed ? "passed" : "failed"} — ${rounds[0].assertions.length} assertions; ${rounds[0].summary}`, rounds[0].assertions.filter((a) => a.verdict !== "supported"));
+    await checkpoint();
 
     let revisions = 0;
     const needsRevision = () =>
-      review.flags.some((f) => SERIOUS_FLAGS.has(f.verdict)) ||
-      checked.issues.some((i) => i.level === "error" && i.code !== "duplicate_topic") ||
-      checked.issues.some((i) => i.code === "word_count");
-
-    if (needsRevision()) {
+      !rounds[rounds.length - 1].passed || structure.issues.some((i) => (i.level === "error" && i.code !== "duplicate_topic") || i.code === "word_count");
+    while (needsRevision() && revisions < config.maxRevisions) {
       step = "revise";
-      revisions = 1;
-      draft = await writeArticle({
-        topic: chosen.topic,
-        angle: chosen.angle,
-        contentType: chosen.content_type,
-        dossier: research.dossier,
-        sources: research.sources,
-        revision: {
-          previous: draft,
-          wordCount: checked.wordCount,
-          flags: review.flags,
-          otherIssues: checked.issues.map((i) => i.message),
-        },
-      });
-      checked = validateDraft(draft, research.sources, pastTitles, config.duplicateThreshold);
-      note(`revised: "${draft.title}" — ${checked.wordCount} words`, checked.issues);
-      step = "review";
-      review = await reviewClaims(draft, research.dossier);
-      note(`claim review after revision: ${review.flags.length} flag(s). ${review.summary}`, review.flags);
+      const problems = [...revisionProblems(rounds[rounds.length - 1]), ...structure.issues.filter((i) => i.level === "error" || i.code === "word_count").map((i) => i.message)];
+      try {
+        const revised = await writeArticle({ topic: chosen.topic, angle: chosen.angle, contentType: chosen.content_type, ledger, tracker, reserveUsd: verifyWorstCase(ledger), revision: { previous: draft, problems } });
+        revisions++;
+        draft = revised;
+        structure = validateDraft(draft, pastTitles, config.duplicateThreshold);
+        note(`revision ${revisions}: "${draft.title}" — ${structure.wordCount} words`, structure.issues);
+        step = "reverify";
+        // Full re-verification: catches anything the revision introduced, not just the fixes.
+        rounds.push(await verifyArticle({ article: draft, ledger, round: rounds.length + 1, tracker }));
+        const r = rounds[rounds.length - 1];
+        note(`re-verification: ${r.passed ? "passed" : "failed"} — ${r.assertions.length} assertions; ${r.summary}`, r.assertions.filter((a) => a.verdict !== "supported"));
+      } catch (e) {
+        if (!(e instanceof BudgetExceeded)) throw e;
+        note(`revision not attempted: ${e.message}`);
+        break;
+      }
     }
-    await checkpoint();
 
-    // 5. Link check ---------------------------------------------------------
-    step = "links";
-    const checkedSources = await checkLinks(checked.sources);
-    const broken = checkedSources.filter((s) => s.link_status === "broken");
-    note(
-      `link check: ${checkedSources.filter((s) => s.link_status === "ok").length} ok, ${checkedSources.filter((s) => s.link_status === "unverified").length} unverified, ${broken.length} broken`,
-      checkedSources.map((s) => ({ url: s.url, status: s.link_status, detail: s.link_detail })),
-    );
-    // Broken links are removed from the published source list (and section references).
-    const sources = checkedSources.filter((s) => s.link_status !== "broken");
-    const kept = new Set(sources.map((s) => s.id));
-    const content = {
-      ...checked.content,
-      sections: checked.content.sections.map((s) => ({ ...s, source_ids: s.source_ids.filter((sid) => kept.has(sid)) })),
-    };
-    const issues: ValidationIssue[] = [...checked.issues];
-    for (const b of broken) issues.push({ level: "warning", code: "broken_link", message: `Removed unreachable source ${b.url} (${b.link_detail}).` });
-    if (sources.length < 2) issues.push({ level: "error", code: "insufficient_working_sources", message: `Only ${sources.length} source link(s) are reachable.` });
-    else if (sources.length < 3 && !issues.some((i) => i.code === "few_sources"))
-      issues.push({ level: "warning", code: "few_sources", message: `Only ${sources.length} working source(s) remain after the link check.` });
-    for (const s of content.sections)
-      if (broken.length && s.source_ids.length === 0) issues.push({ level: "warning", code: "unsourced_section", message: `Section "${s.heading}" lost all its sources to broken links.` });
-    const remaining = review.flags.filter((f) => SERIOUS_FLAGS.has(f.verdict));
-    if (remaining.length) issues.push({ level: "warning", code: "unsupported_claims", message: `${remaining.length} claim(s) flagged as unsupported, contradicted, or missing uncertainty.` });
-
-    // 6. Decide status and save --------------------------------------------
+    // 4. Decide status and save (never auto-publish) -------------------------
     step = "save";
-    const errors = issues.filter((i) => i.level === "error");
-    const status: GenerationStatus = errors.length
+    const finalRound = rounds[rounds.length - 1];
+    const issues: ValidationIssue[] = [...structure.issues, ...finalRound.map_issues.map((m) => ({ level: "warning" as const, code: "claim_map", message: m }))];
+    const failedAssertions = finalRound.assertions.filter((a) => a.verdict !== "supported");
+    if (failedAssertions.length) issues.push({ level: "error", code: "factual_verification", message: `${failedAssertions.length} statement(s) not fully supported by the evidence.` });
+    if (tracker.stoppedForBudget) issues.push({ level: "warning", code: "budget", message: tracker.stoppedForBudget });
+    const structuralErrors = structure.issues.filter((i) => i.level === "error");
+    const status: GenerationStatus = structuralErrors.some((i) => i.code === "duplicate_topic")
       ? "failed"
-      : remaining.length || issues.some((i) => ["word_count", "unsourced_section", "few_sources"].includes(i.code))
-        ? "needs_review"
-        : "ready";
-    note(`status: ${status}`);
+      : finalRound.passed && structuralErrors.length === 0
+        ? "verified"
+        : "needs_review";
+    note(`status: ${status}; cost $${tracker.spent.toFixed(4)}`);
+
+    const perSection = sectionSources(draft, finalRound, ledger);
+    const content = { ...structure.content, sections: structure.content.sections.map((s, i) => ({ ...s, source_ids: perSection[i] ?? [] })) };
+    const usedIds = new Set(perSection.flat());
+    const sources: Source[] = ledger.sources.filter((s) => usedIds.has(s.id)).map((s) => ({ id: s.id, title: s.title, url: s.url, link_status: "ok", link_detail: `retrieved ${s.retrieved_at?.slice(0, 10) ?? ""}` }));
 
     const validation: ValidationReport = {
       issues,
-      claim_review: review,
-      research_notes: research.disputedPoints,
-      research_dossier: research.dossier,
+      research_notes: uncertaintyNotes(ledger),
+      verification: rounds,
+      claim_map: draft.claim_map,
       revisions,
       disclaimer: DISCLAIMER,
     };
@@ -185,24 +161,26 @@ export async function generateDiscovery(onLog?: (e: LogEntry) => void): Promise<
       content_type: chosen.content_type,
       topic: chosen.topic,
       content,
-      word_count: checked.wordCount,
-      reading_time_minutes: readingTimeMinutes(checked.wordCount),
+      word_count: structure.wordCount,
+      reading_time_minutes: readingTimeMinutes(structure.wordCount),
       sources,
       related_topics: draft.related_topics.map((t) => t.trim()).filter(Boolean).slice(0, 3),
       validation,
+      evidence: ledger,
+      usage: tracker.report(PRICING_NOTE),
       generation_log: log,
       generation_status: status,
-      error: errors.length ? errors.map((e) => e.message).join(" ") : null,
-      published_at: status === "ready" ? new Date().toISOString() : null,
+      error: status === "failed" ? structuralErrors.map((e) => e.message).join(" ") : null,
+      published_at: null,
     });
-    return { id, status, title: draft.title, ...(errors.length ? { error: errors.map((e) => e.message).join(" ") } : {}) };
+    return { id, status, title: draft.title, costUsd: tracker.spent };
   } catch (err) {
     const message = `[${step}] ${describeError(err)}`;
     note(`FAILED: ${message}`);
     console.error(`Discovery ${id} failed:`, err);
-    await updateDiscovery(id, { generation_status: "failed", error: message, generation_log: log }).catch((e) =>
+    await updateDiscovery(id, { generation_status: "failed", error: message, generation_log: log, usage: tracker.report(PRICING_NOTE), ...(ledger ? { evidence: ledger } : {}) }).catch((e) =>
       console.error("Could not record failure:", e),
     );
-    return { id, status: "failed", title: null, error: message };
+    return { id, status: "failed", title: null, costUsd: tracker.spent, error: message };
   }
 }

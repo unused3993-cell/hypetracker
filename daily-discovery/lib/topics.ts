@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { structured } from "./claude";
+import { stages } from "./config";
+import type { CostTracker } from "./cost";
 import type { CategoryPlan } from "./interests";
 import { mostSimilar } from "./text";
 
@@ -10,6 +12,9 @@ const CandidateSchema = z.object({
   angle: z.string().describe("What the reader will understand by the end — the substantive takeaway"),
   why_interesting: z.string(),
   likely_sources: z.string().describe("What kinds of credible sources should exist (museums, journals, primary texts...)"),
+  search_terms: z
+    .array(z.string())
+    .describe("2-3 short search queries; the first should be the likely title of the main English Wikipedia article on the subject"),
   relevance: z.number().int().describe("1-5: fit with the reader's interest profile"),
   substance: z.number().int().describe("1-5: potential to teach something substantive in ~750 words"),
   curiosity: z.number().int().describe("1-5: intrinsic surprise or curiosity"),
@@ -33,6 +38,7 @@ export async function generateCandidates(
   plan: CategoryPlan,
   history: { title: string | null; topic: string | null }[],
   recent: { title: string | null; topic: string | null; subcategory: string | null }[],
+  tracker: CostTracker,
 ): Promise<Candidate[]> {
   const subList = plan.subcategories.map((s) => `- ${s.subcategory} (weight ${s.weight})`).join("\n");
   const previous = history.map((h) => `- ${h.title ?? h.topic}`).filter(Boolean).slice(0, 150).join("\n") || "(none yet)";
@@ -48,14 +54,15 @@ ${lastFew}
 All previously published discoveries — avoid repeating or closely overlapping any of them:
 ${previous}
 
-Propose 10 diverse candidate topics. Mix stories and explanations where the subcategory allows. Each must be specific enough for a short article.`;
+Propose 8 diverse candidate topics. Mix stories and explanations where the subcategory allows. Each must be specific enough for a short article.`;
 
   const pool = await structured({
-    step: "topic selection",
+    stage: "topics",
+    settings: stages.topics,
     schema: CandidatePoolSchema,
     system: SYSTEM,
     prompt,
-    effort: "medium",
+    tracker,
   });
 
   const pastTopics = history.flatMap((h) => [h.title, h.topic]).filter((t): t is string => !!t);

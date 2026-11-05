@@ -2,6 +2,9 @@
   "name": "daily-discovery",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "demo": "DEMO_MODE=1 next dev",

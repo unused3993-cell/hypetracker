@@ -1,5 +1,6 @@
 // Published-article files for the BAER reader (content/articles/<slug>.json).
-// Created by `npm run import-article`; the text is the pipeline's output, copied verbatim.
+// Created by `npm run import-article` (scripts/import-article.mjs); the text is the pipeline's
+// output, copied verbatim.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,14 +41,4 @@ export function loadArticle(slug: string): ReaderArticle | null {
   const file = join(ARTICLES_DIR, `${slug}.json`);
   if (!existsSync(file)) return null;
   return JSON.parse(readFileSync(file, "utf8")) as ReaderArticle;
-}
-
-export function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/['’]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }

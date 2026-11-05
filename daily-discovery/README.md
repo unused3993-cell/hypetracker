@@ -35,7 +35,7 @@ Demo mode shows the reader experience without Anthropic or Supabase. It contains
 This is a mobile-first reading page for a single article, kept apart from the older screens in its own route group, `app/(baer)/`.
 
 1. **Generate an article:** `npm run article -- --eclipse`
-2. **Import it:** `npm run import-article -- runs/article-<time>.json [--category History]`. This writes `content/articles/<slug>.json`, copying the text verbatim and keeping the source titles and URLs (not the page text).
+2. **Import it:** `npm run import-article -- runs/article-<time>.json [--category History] [--slug my-slug]`. This writes `content/articles/<slug>.json`, copying the text verbatim and keeping the source titles and URLs (not the page text). The importer is plain JavaScript run by `node` (`scripts/import-article.mjs`), with no TypeScript loader or pipeline dependencies. It exits 0 on success and 2 on bad input, with a message saying what's wrong.
 3. **Preview it:** run `npm run dev` and open `http://localhost:3000/read/<slug>`.
 
 Other files:

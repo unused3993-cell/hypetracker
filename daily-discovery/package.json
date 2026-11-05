@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "generate": "tsx scripts/generate.ts",
     "article": "tsx scripts/article.ts",
-    "import-article": "tsx scripts/import-article.ts",
-    "test": "tsx --test lib/pipeline.test.ts lib/research.test.ts lib/review.test.ts lib/e2e.test.ts"
+    "import-article": "node scripts/import-article.mjs",
+    "test": "tsx --test lib/pipeline.test.ts lib/research.test.ts lib/review.test.ts lib/e2e.test.ts lib/import-article.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",

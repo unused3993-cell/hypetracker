@@ -10,10 +10,12 @@
     "typecheck": "tsc --noEmit",
     "generate": "tsx scripts/generate.ts",
     "article": "tsx scripts/article.ts",
+    "import-article": "tsx scripts/import-article.ts",
     "test": "tsx --test lib/pipeline.test.ts lib/research.test.ts lib/review.test.ts lib/e2e.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",
+    "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/instrument-serif": "^5.3.0",

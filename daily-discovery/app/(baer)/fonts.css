@@ -1,0 +1,30 @@
+/*
+ * BAER typography.
+ *
+ * Intended faces (commercial, licence required):
+ *   Wordmark  — Tiempos Text, Regular, caps          (Klim Type Foundry)
+ *   Headlines — Tiempos Headline, Regular            (Klim Type Foundry)
+ *   Body, subtitles, UI — Söhne Buch / Regular / Kräftig (Klim Type Foundry)
+ *
+ * Until licensed web-font files are available, the stacks fall through to free substitutes
+ * bundled with the app: Newsreader (variable, optical sizes) for Tiempos and Inter (variable)
+ * for Söhne.
+ *
+ * To switch to the licensed fonts: put the .woff2 files in public/fonts/ and uncomment the
+ * @font-face rules below (check the file names against your licence package). Nothing else
+ * needs to change: every rule in baer.css reads these variables.
+ */
+
+/*
+@font-face { font-family: "Tiempos Headline"; src: url("/fonts/tiempos-headline-regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Tiempos Text"; src: url("/fonts/tiempos-text-regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Söhne"; src: url("/fonts/soehne-buch.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Söhne"; src: url("/fonts/soehne-buch-kursiv.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Söhne"; src: url("/fonts/soehne-kraftig.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+*/
+
+:root {
+  --baer-font-wordmark: "Tiempos Text", "Newsreader Variable", Georgia, serif;
+  --baer-font-headline: "Tiempos Headline", "Newsreader Variable", Georgia, serif;
+  --baer-font-sans: "Söhne", "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+}

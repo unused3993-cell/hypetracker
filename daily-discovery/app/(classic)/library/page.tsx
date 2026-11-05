@@ -1,7 +1,7 @@
 import { listPublished, shelfOf } from "@/lib/repository";
 import type { Discovery } from "@/lib/types";
-import { Figure } from "../components/Figure";
-import { issueNo, shortDate } from "../components/format";
+import { Figure } from "../../components/Figure";
+import { issueNo, shortDate } from "../../components/format";
 
 export const dynamic = "force-dynamic";
 

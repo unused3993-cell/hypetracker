@@ -30,6 +30,18 @@ Demo mode shows the reader experience without Anthropic or Supabase. It contains
 | `/bench` | **Test bench**: every discovery in any status |
 | `/bench/[id]` | One discovery's sources, editorial review and corrections, cost per stage, generation log, and **Approve / Reject** |
 
+## BAER article reader (`/read/<slug>`)
+
+This is a mobile-first reading page for a single article, kept apart from the older screens in its own route group, `app/(baer)/`.
+
+1. **Generate an article:** `npm run article -- --eclipse`
+2. **Import it:** `npm run import-article -- runs/article-<time>.json [--category History]`. This writes `content/articles/<slug>.json`, copying the text verbatim and keeping the source titles and URLs (not the page text).
+3. **Preview it:** run `npm run dev` and open `http://localhost:3000/read/<slug>`.
+
+Other files:
+- **Typography:** `app/(baer)/fonts.css`. Tiempos and Söhne are set as the primary faces, with Newsreader and Inter as free substitutes until licensed files are added.
+- **Images:** `app/(baer)/media.ts`. A photograph is used if its file exists in `public/articles/<slug>/`; otherwise a temporary illustration appears.
+
 ## Setup
 
 **Requirements:** Node 20+ (tested on 22), a Supabase project and an Anthropic API key.

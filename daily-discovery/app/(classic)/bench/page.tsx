@@ -1,6 +1,6 @@
 import { isDemoMode, listAll } from "@/lib/repository";
 import type { Discovery } from "@/lib/types";
-import { GenerateButton } from "../components/GenerateButton";
+import { GenerateButton } from "../../components/GenerateButton";
 
 export const dynamic = "force-dynamic";
 

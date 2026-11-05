@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getIssue } from "@/lib/repository";
-import { IssueView } from "../../components/IssueView";
+import { IssueView } from "../../../components/IssueView";
 
 export const dynamic = "force-dynamic";
 

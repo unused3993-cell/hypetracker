@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { getById, isDemoMode } from "@/lib/repository";
 import type { Discovery, EditorialReview } from "@/lib/types";
-import { GenerateButton } from "../../components/GenerateButton";
-import { ReviewControls } from "../../components/ReviewControls";
+import { GenerateButton } from "../../../components/GenerateButton";
+import { ReviewControls } from "../../../components/ReviewControls";
 
 export const dynamic = "force-dynamic";
 

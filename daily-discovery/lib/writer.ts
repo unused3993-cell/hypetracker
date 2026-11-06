@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { ArticleSchema, CritiqueSchema, StageOutput } from "./schemas";
 import { readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { structured, type ModelSettings } from "./claude";
 import { stages } from "./config";
@@ -13,7 +14,7 @@ export const WORD_RANGE = { min: 1100, max: 1600 } as const;
 
 export type DraftArticle = z.infer<typeof ArticleSchema>;
 
-const SYSTEM = `You are a staff writer at BAER. Write the piece according to the BAER house style guide above: choose a form and a spine before drafting, and follow every rule in it.
+const SYSTEM = `You are a staff writer at BAER. Write the piece in the voice of the model features above, following the BAER house style guide: choose a form and a spine before drafting, and follow every rule in it.
 
 Accuracy (a fact-checker reviews every sentence against the research afterwards):
 - Every scene, detail, number, name, date, quotation, motive and feeling must come from the research material. Do not invent dialogue, thoughts, weather, sounds or atmosphere.
@@ -34,8 +35,23 @@ export function styleGuide(): string {
  * Material shared by the writer, editor, rewriter and fact-checker, identical across calls so
  * it is cached after the first one (per model).
  */
+let exemplarText: string | null = null;
+/**
+ * Published features the editor chose as models of voice and flow (content/exemplars/*.md).
+ * They are kept out of git (third-party text) and are optional.
+ */
+export function exemplars(): string {
+  if (exemplarText !== null) return exemplarText;
+  const dir = path.join(process.cwd(), "content", "exemplars");
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".md")).sort() : [];
+  exemplarText = files.length
+    ? `<voice_models>\nThese published features are BAER's models for voice, rhythm and flow. Write so a piece would sit naturally beside them: how they open, how each paragraph hands off to the next, how they move between scene, explanation and quotation, their dry asides, their sentence variety. Never copy their wording or facts, and never use their first-person reporting or interviews (see the style guide).\n\n${files.map((f) => `<feature name="${f.replace(/\.md$/, "")}">\n${readFileSync(path.join(dir, f), "utf8").trim()}\n</feature>`).join("\n\n")}\n</voice_models>\n\n`
+    : "";
+  return exemplarText;
+}
+
 export function sharedContext(pack: ResearchPack): string {
-  return `<style_guide>\n${styleGuide()}\n</style_guide>\n\n<research>\n${researchForModel(pack)}\n</research>`;
+  return `${exemplars()}<style_guide>\n${styleGuide()}\n</style_guide>\n\n<research>\n${researchForModel(pack)}\n</research>`;
 }
 
 /** The research material as the writer and reviewer see it, grouped by source. */
@@ -92,7 +108,7 @@ The style guide and the research material are above.${input.retryNote ? `\n\nIMP
   });
 }
 
-const EDITOR = `You are the editor at BAER. Judge the draft against the BAER house style guide above, working through the editor's checklist at its end. Be specific and demanding: quote the draft and give a concrete fix for each point. Judge craft, structure and voice; also flag accuracy risks an editor would catch, using the research above. Then write a revision plan: the new form and spine if the draft's are weak, the new opening, the order of movements, what to cut, where the climax goes, and the ending.`;
+const EDITOR = `You are the editor at BAER. Your first question: would this draft sit beside the model features above, or does it read like an encyclopedia entry rewritten? Point to the exact passages where it sounds like a report rather than those features, and say how those features would handle the same material. Then judge the draft against the BAER house style guide above, working through the editor's checklist at its end. Be specific and demanding: quote the draft and give a concrete fix for each point. Judge craft, structure and voice; also flag accuracy risks an editor would catch, using the research above. Then write a revision plan: the new form and spine if the draft's are weak, the new opening, the order of movements, what to cut, where the climax goes, and the ending.`;
 
 
 export type Critique = z.infer<typeof CritiqueSchema>;

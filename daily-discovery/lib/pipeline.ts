@@ -92,7 +92,10 @@ export async function produceArticle(opts: { query: ResearchQuery; contentType: 
       toReview = rewrite;
       opts.note(`rewrite: "${rewrite.title}" (${words(rewrite)} words)`);
     } else opts.note(`rewrite incomplete (${words(rewrite)} words); keeping the draft`);
-  } else opts.note("edit and rewrite skipped: not enough budget left under the cap");
+  } else
+    opts.note(
+      `WARNING: edit and rewrite SKIPPED. They need up to $${(editWorst + rewriteWorst).toFixed(2)} plus the fact-check, and only $${opts.tracker.remaining.toFixed(2)} of the $${opts.tracker.maxUsd.toFixed(2)} cap is left. Raise BUDGET_MAX_USD in .env.local to run them.`,
+    );
 
   const { article, review } = await reviewArticle({ article: toReview, pack: opts.pack, tracker: opts.tracker });
   const sub = review.issues.filter((i) => i.severity === "substantive");

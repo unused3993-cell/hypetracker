@@ -91,6 +91,24 @@ The best magazine writing draws power from being there: "I walked", "she told me
 
 Roughly 1,100–1,600 words where the material supports it. A shorter piece with a strong spine is better than a longer one padded with detours.
 
+## 8. Write for the reader's understanding
+
+The reader is curious and intelligent, with no specialist background. Organise the piece around how their understanding develops, not around the order facts appear in the research.
+
+- **Know what the headline has already told them.** Build suspense only around what is genuinely unknown. Never pose a question the title has answered ("what was it?" under a headline saying what it was).
+- **Lead with the surprising thing.** Put the action or observation first; bring in names, titles, dates, institutions and relationships only as far as they help the reader follow an action or judge a claim. Keep words for the same object consistent ("rock" and "bronze" are not the same thing; if it looked like rock, say so).
+- **Make chronology a chain of understanding.** At each stage: what couldn't yet be explained, what new evidence arrived, what it changed, and what was still open. A new researcher or a date is not a transition; the unsolved problem that makes the next discovery matter is. When one scholar revises another, say what was wrong and what the new version explains.
+- **Give the reader a picture before the parts.** Before the internal workings of an object, say roughly how big it is, what someone would turn or adjust, what it would show, and one concrete question it could answer, all from the sources.
+- **Explain technical terms by what they do in this story,** at first use. Naming the term is optional; making it understandable isn't. If only the consequence matters, drop the term. Never define one unexplained term with another. ("Faster when closer to Earth", not "faster at perigee".)
+- **Cut explanations that repeat.** Every sentence adds a fact, clarifies a relationship, develops an implication or moves the story on.
+- **Keep a number only if it earns its place:** it gives scale, explains a mechanism or supports a conclusion. Minor discrepancies between sources go in the uncertainty note, not the prose.
+- **Give the payoff room.** Spend the most explanation on the fact that makes the story worth telling: take one capability and explain it concretely, then widen. Show why an achievement matters before quoting someone calling it extraordinary.
+- **One principal job per paragraph.** Keep different kinds of uncertainty apart (the date of making, the date of a calendar, the date of a wreck are three questions).
+- **Check that evidence answers the claim it follows.** A quotation that sounds authoritative may not address the objection before it. Distinguish observation, historical interpretation, current reconstruction and speculation, and never turn missing evidence into proof that something didn't exist.
+- **The ending completes this story:** fulfil the opening's promise or draw out the central discovery's implication. No late new mystery, no generic "what else lies beneath" line.
+- **Conversational British English.** Direct syntax, familiar words, natural contractions ("wasn't", "didn't"). No stiff phrases ("hitherto", "was deficient", "Nor did…"), no vague nouns ("the thing"), no forced informality. British spelling; one system of units throughout (metric).
+- **Few breaks.** Prefer strong transitions to section breaks; a short piece shouldn't read as a series of entries.
+
 ---
 
 ## Editor's checklist
@@ -106,3 +124,6 @@ The editor answers each question with a quoted example from the draft and a spec
 7. **Detours:** List the material to cut.
 8. **Sentences:** Quote the five weakest sentences and say why.
 9. **Accuracy risks:** Flag invented-looking detail, overstatement and uncertainty that's shrugged off rather than dramatised. The fact-check runs after this, so focus on what an editor would catch.
+10. **The reader:** Where would a non-specialist get lost? List every unexplained term, every place the headline's answer is withheld as fake suspense, every transition that is only a name or date, every number that doesn't earn its place, and whether the reader can picture the object and what it did before the details.
+11. **Logic:** Does each piece of evidence actually support the claim attached to it?
+12. **House style:** British English, contractions, consistent units, consistent names for the same thing, few section breaks.

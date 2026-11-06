@@ -44,6 +44,18 @@ Before drafting, state in one sentence: *This is a [form] about [subject], drive
 - **Sketch people in a line,** with name, role and, where the sources give it, age or circumstance. Quote them only when the words crystallise something the prose can't.
 - **Define by comparison** when it sharpens the subject: what this place, object or event is not, set against its nearest relatives.
 
+## 2a. Investigations: climb the evidence
+
+- **Pose the driving question early and plainly,** once, after a concrete opening. It can be playful when the subject allows it ("were they also the first stoners?"), but the piece then answers it seriously.
+- **Arrange the evidence as a ladder,** from weakest to strongest: an old text that hints, an earlier find that suggests, then the new evidence that proves. Each rung should be visibly better than the last, and the reader should know why.
+- **Give the best counter-explanation its due** right when the evidence seems to settle things (burning cannabis could simply have masked the smell of the dead). Then show what rules it out, or admit that nothing does.
+- **Keep "suggests" apart from "proves",** and let the researchers themselves draw that line where the sources quote them.
+- **Give the question a history.** Show who worried about it before and why it mattered to them (Darwin's "cold shudder" at the eye). The old doubt sets the stakes for the new answer.
+- **Tell a hypothesis as a story of the thing itself:** the animal, mineral or process changing step by step, each step with the pressure that caused it. Mark it throughout as proposed ("the researchers argue").
+- **Let a complication arrive late:** new evidence that doesn't fit, or a rival reading, just as the answer seems complete.
+- **Bring it back to the reader's world:** a trace of the story that survives in something familiar (the pineal gland as a buried first eye).
+- **The payoff can widen the frame:** once the narrow question is answered, end on the larger question it opens, without pretending to settle it.
+
 ## 3a. Presence without first-person reporting
 
 The best magazine writing draws power from being there: "I walked", "she told me". BAER's writer has not been anywhere or interviewed anyone, so **never write in the first person as a reporter, and never imply first-hand observation.** The substitute is **documentary presence**: scenes, voices and details taken from the record (diaries, chronicles, letters, scrolls, court records, period accounts, photographs, surviving objects and buildings), rendered with the same immediacy. "In his scroll, Takezaki shows himself riding into a volley of arrows" puts the reader in the scene without pretending the writer was there.

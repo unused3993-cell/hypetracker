@@ -15,18 +15,22 @@ Every piece needs a **spine**: one line of movement that pulls the reader from t
 | **Story** | Events with people and choices | A person or group, what they wanted, what they did, what followed |
 | **Biography of a thing** | An object, material, place or system | How the thing came to be or what happened to it, in time order |
 | **Investigation** | A mechanism, puzzle or phenomenon | One question, answered step by step, with the full answer as the payoff |
+| **Portrait through a tension** | A place, era, institution or idea defined by a contradiction | One tension (beauty and atrocity, East and West, ambition and ruin) explored through a sequence of concrete settings, objects or episodes, each section a new vantage on the same contradiction |
 
 Before drafting, state in one sentence: *This is a [form] about [subject], driven by [spine], and it ends when [payoff].* If you can't, the piece isn't ready to write.
 
 ## 2. Structure
 
-- **Open on something concrete from the sources:** a moment, an object, a document, a physical fact. Never a thesis, a question, a definition or a sweeping generalisation.
+- **Open inside a charged moment or a concrete thing from the sources:** a moment, an object, a document, a physical fact. Never a thesis, a question, a definition or a sweeping generalisation. Let the reader feel the stakes before explaining them; the context can follow in the second paragraph.
 - **Each paragraph must earn the next.** It answers something the last one raised, or raises something the next one answers. A paragraph that could be moved without loss is a detour.
 - **Weave background in when the reader needs it,** not in a block. Context arrives at the moment it makes the story make sense.
 - **Build to a turn or a climax.** The most important event, discovery or answer should arrive late and land hard. Don't spend it in the first third.
-- **End on an image, fact or turn** that makes the reader see what came before differently. Never end with a summary, a moral, a lesson or "what this teaches us."
+- **End on an image, fact or turn** that makes the reader see what came before differently, or on a short, fresh synthesis the whole piece has earned, a new formulation rather than a recap. Never end with a summary of what was said, a moral, a lesson or "what this teaches us."
 - **Cut detours.** A piece can hold perhaps one aside. Interesting material that doesn't serve the spine belongs in another article.
 - **Section breaks only for a change of time or place.** Mark them with an empty heading. Real subheadings are rare and only for genuinely distinct movements.
+
+- **Organise by movement where you can:** through places, objects or episodes. Each section is a new vantage that deepens the spine, not the next item on a timeline.
+- **Layer time onto things.** A single place or object can hold several centuries; let history arrive through what is in front of the reader, not as a chronology.
 
 ## 3. Voice
 
@@ -34,7 +38,15 @@ Before drafting, state in one sentence: *This is a [form] about [subject], drive
 - **Restraint.** Understatement over emphasis. Let facts land without announcing that they matter.
 - **Dry wit,** sparingly, never at the expense of accuracy or the people involved.
 - **Precision.** The exact noun, the active verb, the specific number. Cut adjectives that do the work evidence should do.
-- **Rhythm.** Vary sentence length and paragraph shape. A long, layered sentence followed by a short one. Not every paragraph should open with a date or "The".
+- **Rhythm.** Vary sentence length and paragraph shape. Long sentences can carry embedded asides, set off by dashes or parentheses, and then give way to a short declarative one. Not every paragraph should open with a date or "The".
+- **Argue through juxtaposition, not commentary.** Put two things side by side and let the reader feel the irony: a memorial and what it omits, a sacred site next to a nightclub. Never add "ironically" or explain the contrast.
+- **Choose small, exact details** that carry a whole story: a colour, a floor tile, a sign on a door, a phrase people still use. One telling detail beats a paragraph of description.
+- **Sketch people in a line,** with name, role and, where the sources give it, age or circumstance. Quote them only when the words crystallise something the prose can't.
+- **Define by comparison** when it sharpens the subject: what this place, object or event is not, set against its nearest relatives.
+
+## 3a. Presence without first-person reporting
+
+The best magazine writing draws power from being there: "I walked", "she told me". BAER's writer has not been anywhere or interviewed anyone, so **never write in the first person as a reporter, and never imply first-hand observation.** The substitute is **documentary presence**: scenes, voices and details taken from the record (diaries, chronicles, letters, scrolls, court records, period accounts, photographs, surviving objects and buildings), rendered with the same immediacy. "In his scroll, Takezaki shows himself riding into a volley of arrows" puts the reader in the scene without pretending the writer was there.
 
 ## 4. Never do these
 

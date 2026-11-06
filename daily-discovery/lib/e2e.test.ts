@@ -141,7 +141,7 @@ test("full pipeline: topic → research → write → editorial review with corr
   assert.equal(row.published_at, null, "verified articles are not published until approved");
 
   // Fixture pages are short, so the web search fallback runs to top up full-text sources.
-  assert.deepEqual(anthropicCalls.map(stageOf), ["topics", "search", "write", "review"]);
+  assert.deepEqual(anthropicCalls.map(stageOf), ["topics", "search", "write", "edit", "rewrite", "review"]);
   assert.deepEqual(anthropicCalls.map((c) => c.body.model), ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-sonnet-5-5"]);
 
   // The writer and reviewer read actual source text, not extracted claims.
@@ -165,7 +165,7 @@ test("full pipeline: topic → research → write → editorial review with corr
   assert.ok(pack.sources.some((s) => s.content_status === "retrieved" && s.text!.includes("four-inch telescope")));
 
   const u = row.usage as import("./types").UsageReport;
-  assert.deepEqual(u.stages.map((s) => s.stage), ["topics", "search", "write", "review"]);
+  assert.deepEqual(u.stages.map((s) => s.stage), ["topics", "search", "write", "edit", "rewrite", "review"]);
   assert.ok(u.total_cost_usd > 0 && u.total_cost_usd < u.budget_max_usd);
   for (const s of u.stages) assert.ok(s.max_estimate_usd >= s.cost_usd, `${s.stage}: worst case should bound actual`);
 });

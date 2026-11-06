@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { structured, type ModelSettings } from "./claude";
 import { stages } from "./config";
 import type { CostTracker } from "./cost";
@@ -7,6 +9,7 @@ import type { ContentType, ResearchPack } from "./types";
 export const WORD_RANGE = { min: 1100, max: 1600 } as const;
 
 const ArticleSchema = z.object({
+  plan: z.string().describe("One sentence, written before the article: This is a [form] about [subject], driven by [spine], and it ends when [payoff]."),
   title: z.string().describe("Compelling, accurate headline. No clickbait, no colon-subtitle."),
   subtitle: z.string().describe("One sentence explaining the subject."),
   introduction: z.array(z.string()).describe("Only the opening: one to three paragraphs, beginning on a concrete scene or detail"),
@@ -25,24 +28,30 @@ const ArticleSchema = z.object({
 
 export type DraftArticle = z.infer<typeof ArticleSchema>;
 
-const SYSTEM = `You are a staff writer at Daily Discovery. You write long-form narrative nonfiction in the tradition of the best literary magazine journalism: one continuous, coherent story told by a writer with a point of view, never a report assembled from facts.
+const SYSTEM = `You are a staff writer at BAER. Write the piece according to the BAER house style guide above: choose a form and a spine before drafting, and follow every rule in it.
 
-Craft:
-- Build a single narrative line. Find the human or dramatic thread in the material (a person, a decision, a moment, an object) and carry the reader through it from beginning to end. Each paragraph should follow from the one before. Weave context, background and explanation into the story at the moment the reader needs them; don't park them in separate blocks.
-- Open on a precise, concrete scene or detail taken from the sources, not a thesis, a question or a sweeping generalisation. Earn the significance rather than announcing it.
-- Write with authority, restraint and dry wit. Choose the exact noun and the active verb. Vary sentence length: let a long, layered sentence give way to a short one. Use irony sparingly, never at the expense of accuracy.
-- Let people and their choices carry the piece, characterised through what they did, said and wrote as the sources record it.
-- Explain mechanisms and causes clearly, inside the flow of the story.
-- End on a resonant image, fact or turn that reframes what came before. Never end with a summary, a moral or a lesson.
-- Write the full piece: the opening goes in "introduction", and the rest of the story (most of the words) goes in "sections". Most pieces need no subheadings. When the story moves to a new time or place, begin a new section with an empty heading: an unmarked break. Give a section a heading only for a genuinely distinct movement, and use no more than three.
-- Avoid generic openings ("Imagine...", "In the annals of history..."), rhetorical questions, listicle rhythm, clichés ("little did they know", "the rest is history"), throat-clearing, hype, and adjectives doing the work of evidence.
+Accuracy (a fact-checker reviews every sentence against the research afterwards):
+- Every scene, detail, number, name, date, quotation, motive and feeling must come from the research material. Do not invent dialogue, thoughts, weather, sounds or atmosphere.
+- Mark inference as inference. Make disagreement between sources part of the story.
+- Quote only words that appear in the material, and attribute them to people or documents, never to websites.
+- Prefer scholarly, institutional and primary material; ignore anything that looks unreliable.
 
-Accuracy (a fact-checker reviews every sentence against the sources afterwards):
-- Narrative must never become fiction. Every scene, detail, number, name, date, quotation, motive and feeling must come from the research material. Do not invent dialogue, thoughts, weather, sounds or atmosphere to make a scene vivid: if the sources don't describe it, don't describe it. Restraint is part of the style.
-- Interpret and connect freely, but mark inference as inference ("it seems likely", "historians have read this as").
-- Where sources disagree or are uncertain, make that tension part of the story instead of smoothing it over.
-- Quote only words that appear in the material, and attribute them.
-- Prefer scholarly, institutional and primary material over weaker pages; ignore anything that looks unreliable.`;
+Output: state your plan in "plan" first. The opening goes in "introduction"; the rest of the story (most of the words) goes in "sections". Use an empty heading for an unmarked break.`;
+
+let guide: string | null = null;
+/** The BAER house style guide (content/style-guide.md). */
+export function styleGuide(): string {
+  guide ??= readFileSync(path.join(process.cwd(), "content", "style-guide.md"), "utf8");
+  return guide;
+}
+
+/**
+ * Material shared by the writer, editor, rewriter and fact-checker, identical across calls so
+ * it is cached after the first one (per model).
+ */
+export function sharedContext(pack: ResearchPack): string {
+  return `<style_guide>\n${styleGuide()}\n</style_guide>\n\n<research>\n${researchForModel(pack)}\n</research>`;
+}
 
 /** The research material as the writer and reviewer see it, grouped by source. */
 export function researchForModel(pack: ResearchPack): string {
@@ -83,16 +92,58 @@ Content type: ${input.contentType.toUpperCase()}
 What the reader should understand by the end: ${input.angle}
 Length: roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words of body text where the material warrants it; substance matters more than length.
 
-<research>
-${researchForModel(input.pack)}
-</research>${input.retryNote ? `\n\nIMPORTANT: ${input.retryNote}` : ""}`;
+The style guide and the research material are above.${input.retryNote ? `\n\nIMPORTANT: ${input.retryNote}` : ""}`;
 
   return structured({
     stage: "write",
     settings: input.settings ?? stages.write,
     schema: ArticleSchema,
     system: SYSTEM,
+    context: sharedContext(input.pack),
     prompt,
+    tracker: input.tracker,
+    reserveUsd: input.reserveUsd,
+  });
+}
+
+const EDITOR = `You are the editor at BAER. Judge the draft against the BAER house style guide above, working through the editor's checklist at its end. Be specific and demanding: quote the draft and give a concrete fix for each point. Judge craft, structure and voice; also flag accuracy risks an editor would catch, using the research above. Then write a revision plan: the new form and spine if the draft's are weak, the new opening, the order of movements, what to cut, where the climax goes, and the ending.`;
+
+const CritiqueSchema = z.object({
+  spine: z.string().describe("The form and spine the piece should have, in the guide's one-sentence formula"),
+  findings: z
+    .array(z.object({ checklist_item: z.string(), quote: z.string().describe("Exact words from the draft"), fix: z.string() }))
+    .describe("Every problem found, most important first"),
+  revision_plan: z.string().describe("Instructions for the rewrite, in order"),
+});
+export type Critique = z.infer<typeof CritiqueSchema>;
+
+export function articleText(a: DraftArticle): string {
+  const body = a.sections.map((s) => `${s.heading ? `## ${s.heading}` : "* * *"}\n\n${s.paragraphs.join("\n\n")}`).join("\n\n");
+  return `# ${a.title}\n${a.subtitle}\n\n${a.introduction.join("\n\n")}\n\n${body}`;
+}
+
+export async function critiqueArticle(input: { draft: DraftArticle; pack: ResearchPack; tracker: CostTracker; reserveUsd: number }): Promise<Critique> {
+  return structured({
+    stage: "edit",
+    settings: stages.edit,
+    schema: CritiqueSchema,
+    system: EDITOR,
+    context: sharedContext(input.pack),
+    prompt: `<draft>\n${articleText(input.draft)}\n</draft>`,
+    tracker: input.tracker,
+    reserveUsd: input.reserveUsd,
+  });
+}
+
+export async function rewriteArticle(input: { topic: string; draft: DraftArticle; critique: Critique; pack: ResearchPack; tracker: CostTracker; reserveUsd: number; settings?: ModelSettings }): Promise<DraftArticle> {
+  const notes = input.critique.findings.map((f, i) => `${i + 1}. [${f.checklist_item}] "${f.quote}" → ${f.fix}`).join("\n");
+  return structured({
+    stage: "rewrite",
+    settings: input.settings ?? stages.rewrite,
+    schema: ArticleSchema,
+    system: `${SYSTEM}\n\nThis is a rewrite. Write the whole piece afresh from the research, following the editor's plan; don't patch the draft sentence by sentence. Keep what works, and keep the length at roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words.`,
+    context: sharedContext(input.pack),
+    prompt: `Topic: ${input.topic}\n\n<draft>\n${articleText(input.draft)}\n</draft>\n\n<editor>\nSpine: ${input.critique.spine}\n\nFindings:\n${notes}\n\nRevision plan:\n${input.critique.revision_plan}\n</editor>`,
     tracker: input.tracker,
     reserveUsd: input.reserveUsd,
   });

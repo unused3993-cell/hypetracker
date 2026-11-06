@@ -6,6 +6,7 @@ import type { ReviewIssue } from "./types";
 import type { DraftArticle } from "./writer";
 
 const article: DraftArticle = {
+  plan: "",
   title: "The Eclipse That Made Einstein Famous",
   subtitle: "Two expeditions tested whether gravity bends light.",
   introduction: ["In May 1919 two teams set out to photograph stars beside the darkened Sun."],
@@ -42,4 +43,11 @@ test("omissions are inserted after the anchor; deletions can empty a paragraph; 
 test("an excerpt that isn't in the article leaves the issue unapplied", () => {
   const { issues } = applyCorrections(article, [issue({ excerpt: "Einstein attended the eclipse in person", correction: "x" })]);
   assert.equal(issues[0].applied, false);
+});
+
+test("a revised paragraph replaces the whole paragraph, so corrections leave no seams", () => {
+  const revised = "A wholly rewritten paragraph.";
+  const { article: out, issues } = applyCorrections(article, [issue({ location: "s1-1", excerpt: article.sections[0].paragraphs[0].slice(0, 20), correction: "x", revised_paragraph: revised })]);
+  assert.equal(issues[0].applied, true);
+  assert.equal(out.sections[0].paragraphs[0], revised);
 });

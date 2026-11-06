@@ -85,6 +85,8 @@ export interface ReviewIssue {
   location: string; // "intro-1", "s2-3", "title", "subtitle"
   excerpt: string; // the problem text, copied from the article
   correction: string; // replacement text ("" = delete the excerpt); for omissions, text to append
+  /** The whole paragraph rewritten with the fix (preferred over splicing `correction`). "" deletes the paragraph. */
+  revised_paragraph?: string;
   explanation: string; // what the sources say
   source_ids: string[];
   /** Set by code: whether the correction was applied to the article. */

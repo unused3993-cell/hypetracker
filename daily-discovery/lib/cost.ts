@@ -23,6 +23,14 @@ export function worstCaseUsd(model: string, inputChars: number, maxTokens: numbe
   return (input * p.input + maxTokens * p.output) / 1e6 + searches * WEB_SEARCH_USD;
 }
 
+/** Worst case for a call whose `cachedChars` of input should already be in the prompt cache. */
+export function worstCaseCachedUsd(model: string, inputChars: number, cachedChars: number, maxTokens: number): number {
+  const p = priceOf(model);
+  const cached = estimateTokens(cachedChars) - 400;
+  const fresh = estimateTokens(inputChars - cachedChars);
+  return (fresh * p.input + cached * p.cacheRead + maxTokens * p.output) / 1e6;
+}
+
 export class BudgetExceeded extends Error {
   constructor(
     public stage: string,
@@ -37,6 +45,8 @@ type Usage = Anthropic.Beta.BetaUsage;
 
 export class CostTracker {
   private stages = new Map<string, StageUsage>();
+  /** model + context key for prompts already written to the cache in this generation. */
+  readonly cached = new Set<string>();
   stoppedForBudget?: string;
 
   constructor(

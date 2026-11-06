@@ -26,6 +26,8 @@ export const stages = {
   topics: { model: process.env.MODEL_TOPICS || "claude-sonnet-5-5", effort: effort("EFFORT_TOPICS", "low"), maxTokens: num("MAX_TOKENS_TOPICS", 3000) },
   search: { model: process.env.MODEL_SEARCH || "claude-haiku-5-5", effort: effort("EFFORT_SEARCH", "low"), maxTokens: num("MAX_TOKENS_SEARCH", 1500) },
   write: { model: process.env.MODEL_WRITE || "claude-sonnet-5-5", effort: effort("EFFORT_WRITE", "medium"), maxTokens: num("MAX_TOKENS_WRITE", 10000) },
+  edit: { model: process.env.MODEL_EDIT || "claude-sonnet-5-5", effort: effort("EFFORT_EDIT", "medium"), maxTokens: num("MAX_TOKENS_EDIT", 5000) },
+  rewrite: { model: process.env.MODEL_REWRITE || "claude-sonnet-5-5", effort: effort("EFFORT_REWRITE", "medium"), maxTokens: num("MAX_TOKENS_REWRITE", 10000) },
   review: { model: process.env.MODEL_REVIEW || "claude-sonnet-5-5", effort: effort("EFFORT_REVIEW", "medium"), maxTokens: num("MAX_TOKENS_REVIEW", 6000) },
 } as const;
 

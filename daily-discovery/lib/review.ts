@@ -7,7 +7,7 @@ import { structured } from "./claude";
 import { stages } from "./config";
 import { worstCaseUsd, type CostTracker } from "./cost";
 import type { EditorialReview, ResearchPack, ReviewIssue } from "./types";
-import { researchForModel, type DraftArticle } from "./writer";
+import { sharedContext, type DraftArticle } from "./writer";
 
 const ReviewSchema = z.object({
   issues: z.array(
@@ -16,7 +16,8 @@ const ReviewSchema = z.object({
       severity: z.enum(["substantive", "minor"]).describe("substantive = would leave a reader believing something false or materially incomplete about something that matters"),
       location: z.string().describe('"title", "subtitle", "intro-1", "s2-3" (section 2, paragraph 3), ...'),
       excerpt: z.string().describe("The problem text, copied exactly from that paragraph (for omissions: the sentence after which the fix belongs)"),
-      correction: z.string().describe("Replacement text for the excerpt, in the article's voice; empty string to delete it. For omissions: the sentence(s) to insert after the excerpt."),
+      correction: z.string().describe("The fix in brief: replacement text for the excerpt (empty to delete)"),
+      revised_paragraph: z.string().describe('The WHOLE paragraph at that location rewritten with the fix, reading naturally, in the article\'s voice; "" deletes the paragraph. For title/subtitle, the whole new title/subtitle.'),
       explanation: z.string().describe("What the sources say, briefly"),
       source_ids: z.array(z.string()),
     }),
@@ -33,10 +34,10 @@ Check the things that matter: facts, names, dates, numbers, scientific explanati
 - misleading: true pieces framed so the reader takes away something the sources don't support, including overstated certainty about disputed points.
 - omission: leaving out something the sources show is essential, such that the piece misleads.
 
-Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. Corrections must keep the article's narrative voice. For each issue, propose the smallest correction that fixes it, written to fit the paragraph. If the article is sound, return no issues.`;
+Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. For each issue, rewrite the whole paragraph so the fix reads as if the writer made it: no repeated phrases, no seams, same voice and rhythm, changing only what accuracy requires. Report at most one issue per paragraph; if a paragraph has several problems, fix them all in one revised_paragraph. Also flag attribution to websites ("Wikipedia says") as misleading and rewrite it per the style guide. If the article is sound, return no issues.`;
 
 export function reviewWorstCase(pack: ResearchPack, articleChars = 12000): number {
-  return worstCaseUsd(stages.review.model, SYSTEM.length + researchForModel(pack).length + articleChars + 3000, stages.review.maxTokens);
+  return worstCaseUsd(stages.review.model, SYSTEM.length + sharedContext(pack).length + articleChars + 3000, stages.review.maxTokens);
 }
 
 export function paragraphsByLocation(a: DraftArticle): Map<string, string> {
@@ -86,9 +87,13 @@ export function applyCorrections(article: DraftArticle, issues: ReviewIssue[]): 
     const candidates = [issue.location, ...[...paras.keys()].filter((k) => k !== issue.location)];
     for (const loc of candidates) {
       const text = paras.get(loc);
-      if (!text || !pattern) continue;
+      if (text === undefined || !pattern) continue;
       const m = text.match(pattern);
       if (!m) continue;
+      if (issue.revised_paragraph !== undefined && (issue.revised_paragraph.trim() || loc.startsWith("intro-") || loc.startsWith("s"))) {
+        setParagraph(out, loc, issue.revised_paragraph.trim());
+        return { ...issue, location: loc, applied: true };
+      }
       const replacement = issue.type === "omission" ? `${m[0]} ${issue.correction.trim()}` : issue.correction.trim();
       const updated = (text.slice(0, m.index) + replacement + text.slice(m.index! + m[0].length)).replace(/\s{2,}/g, " ").trim();
       setParagraph(out, loc, updated);
@@ -112,7 +117,8 @@ export async function reviewArticle(opts: {
     settings: stages.review,
     schema: ReviewSchema,
     system: SYSTEM,
-    prompt: `<research>\n${researchForModel(opts.pack)}\n</research>\n\n<article>\n${articleForReview(opts.article)}\n</article>`,
+    context: sharedContext(opts.pack),
+    prompt: `<article>\n${articleForReview(opts.article)}\n</article>`,
     tracker: opts.tracker,
   });
   const { article, issues } = applyCorrections(opts.article, result.issues);

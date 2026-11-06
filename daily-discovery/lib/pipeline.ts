@@ -13,7 +13,8 @@ import { articleWordCount, readingTimeMinutes } from "./text";
 import { generateCandidates, type Candidate } from "./topics";
 import type { ArticleContent, ContentType, EditorialReview, GenerationStatus, LogEntry, ResearchPack, Source, ValidationIssue, ValidationReport } from "./types";
 import { validateDraft } from "./validate";
-import { WORD_RANGE, writeArticle, type DraftArticle } from "./writer";
+import { critiqueArticle, rewriteArticle, sharedContext, WORD_RANGE, writeArticle, type Critique, type DraftArticle } from "./writer";
+import { worstCaseCachedUsd } from "./cost";
 
 const DISCLAIMER =
   "Checked by an editorial-review model against the retrieved sources; corrections it proposed were applied. This is automated review, not professional fact-checking; an editor approves each article before publication.";
@@ -47,12 +48,14 @@ export async function gatherResearch(query: ResearchQuery, tracker: CostTracker,
 
 export interface Produced {
   draft: DraftArticle;
+  critique: Critique | null;
+  rewrite: DraftArticle | null;
   article: DraftArticle;
   review: EditorialReview;
 }
 
 /** Write and review one article from a research pack. */
-export async function produceArticle(opts: { query: ResearchQuery; contentType: ContentType; pack: ResearchPack; tracker: CostTracker; note: Note; writer?: typeof stages.write }): Promise<Produced> {
+export async function produceArticle(opts: { query: ResearchQuery; contentType: ContentType; pack: ResearchPack; tracker: CostTracker; note: Note; writer?: typeof stages.write; rewriter?: typeof stages.rewrite }): Promise<Produced> {
   const write = (retryNote?: string) =>
     writeArticle({
       topic: opts.query.topic,
@@ -71,14 +74,33 @@ export async function produceArticle(opts: { query: ResearchQuery; contentType: 
     opts.note(`draft incomplete (${words(draft)} words, ${draft.sections.length} sections); asking the writer for the full piece`);
     draft = await write(`Your previous attempt returned only ${words(draft)} words. Write the complete article, about ${WORD_RANGE.min}-${WORD_RANGE.max} words, with the body of the story in "sections".`);
   }
-  opts.note(`draft: "${draft.title}"`);
-  const { article, review } = await reviewArticle({ article: draft, pack: opts.pack, tracker: opts.tracker });
+  opts.note(`draft: "${draft.title}" (${words(draft)} words). Plan: ${draft.plan}`);
+
+  // Edit and rewrite. Optional: skipped if they can't fit under the cap with review reserved.
+  const ctx = sharedContext(opts.pack).length;
+  const editWorst = worstCaseCachedUsd(stages.edit.model, ctx + 20000, ctx, stages.edit.maxTokens);
+  const rewriter = opts.rewriter ?? stages.rewrite;
+  const rewriteWorst = worstCaseCachedUsd(rewriter.model, ctx + 30000, rewriter.model === stages.write.model ? ctx : 0, rewriter.maxTokens);
+  let critique: Critique | null = null;
+  let rewrite: DraftArticle | null = null;
+  let toReview = draft;
+  if (opts.tracker.canAfford(editWorst + rewriteWorst, reviewWorstCase(opts.pack))) {
+    critique = await critiqueArticle({ draft, pack: opts.pack, tracker: opts.tracker, reserveUsd: rewriteWorst + reviewWorstCase(opts.pack) });
+    opts.note(`editor: ${critique.findings.length} finding(s). Spine: ${critique.spine}`, critique);
+    rewrite = await rewriteArticle({ topic: opts.query.topic, draft, critique, pack: opts.pack, tracker: opts.tracker, reserveUsd: reviewWorstCase(opts.pack), settings: rewriter });
+    if (rewrite.sections.length && words(rewrite) >= WORD_RANGE.min * 0.6) {
+      toReview = rewrite;
+      opts.note(`rewrite: "${rewrite.title}" (${words(rewrite)} words)`);
+    } else opts.note(`rewrite incomplete (${words(rewrite)} words); keeping the draft`);
+  } else opts.note("edit and rewrite skipped: not enough budget left under the cap");
+
+  const { article, review } = await reviewArticle({ article: toReview, pack: opts.pack, tracker: opts.tracker });
   const sub = review.issues.filter((i) => i.severity === "substantive");
   opts.note(
-    `review: ${review.issues.length} issue(s), ${sub.length} substantive, ${review.issues.filter((i) => i.applied).length} corrected; ${review.passed ? "passed" : "UNRESOLVED substantive issues"}. ${review.summary}`,
+    `fact-check: ${review.issues.length} issue(s), ${sub.length} substantive, ${review.issues.filter((i) => i.applied).length} corrected; ${review.passed ? "passed" : "UNRESOLVED substantive issues"}. ${review.summary}`,
     review.issues,
   );
-  return { draft, article, review };
+  return { draft, critique, rewrite, article, review };
 }
 
 /** Section sources validated against the pack, plus the public source list. */

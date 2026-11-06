@@ -2,6 +2,7 @@
 // Saves a readable report (article, corrections, sources, cost) and the full JSON in runs/.
 //
 //   npm run article -- --eclipse                      the 1919 eclipse test topic
+//   npm run article -- --topic "..." --angle "..." --terms "Wikipedia title|other query" [--type explanation]
 //   npm run article                                   a topic chosen from the default interest profile
 //   npm run article -- --eclipse --writer claude-opus-5-5   compare writer models
 //   npm run article -- --eclipse --force-search       also use web search even if free sources suffice
@@ -29,8 +30,12 @@ async function main() {
   const writer = arg("--writer") ? { ...stages.write, model: arg("--writer")! } : stages.write;
 
   let query = ECLIPSE_QUERY;
-  let contentType: "story" | "explanation" = "story";
-  if (!process.argv.includes("--eclipse")) {
+  let contentType: "story" | "explanation" = arg("--type") === "explanation" ? "explanation" : "story";
+  const topic = arg("--topic");
+  if (topic) {
+    // The first search term should be the likely title of the main English Wikipedia article.
+    query = { topic, angle: arg("--angle") ?? topic, searchTerms: (arg("--terms") ?? topic).split("|").map((t) => t.trim()).filter(Boolean) };
+  } else if (!process.argv.includes("--eclipse")) {
     const plan = planCategory(DEFAULT_INTERESTS, []);
     const [best] = await generateCandidates(plan, [], [], tracker);
     query = { topic: best.topic, angle: best.angle, searchTerms: best.search_terms };

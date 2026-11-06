@@ -9,7 +9,7 @@ export const WORD_RANGE = { min: 1100, max: 1600 } as const;
 const ArticleSchema = z.object({
   title: z.string().describe("Compelling, accurate headline. No clickbait, no colon-subtitle."),
   subtitle: z.string().describe("One sentence explaining the subject."),
-  introduction: z.array(z.string()).describe("The opening paragraphs, beginning on a concrete scene or detail"),
+  introduction: z.array(z.string()).describe("Only the opening: one to three paragraphs, beginning on a concrete scene or detail"),
   sections: z
     .array(
       z.object({
@@ -18,7 +18,7 @@ const ArticleSchema = z.object({
         source_ids: z.array(z.string()).describe("IDs (S1, S2, ...) of the sources this section draws on"),
       }),
     )
-    .describe("The rest of the story, continuing the narrative; split only where it moves to a new time or place"),
+    .describe("The body: the rest of the story, which is most of the article. At least one section; split only where the story moves to a new time or place"),
   related_topics: z.array(z.string()).describe("Exactly three specific subjects for future exploration"),
   uncertainties: z.array(z.string()).describe("Points the sources disagree on or leave open, one sentence each, for a reader's note. Empty if none."),
 });
@@ -34,7 +34,7 @@ Craft:
 - Let people and their choices carry the piece, characterised through what they did, said and wrote as the sources record it.
 - Explain mechanisms and causes clearly, inside the flow of the story.
 - End on a resonant image, fact or turn that reframes what came before. Never end with a summary, a moral or a lesson.
-- Most pieces need no subheadings. When the story moves to a new time or place, begin a new section with an empty heading: an unmarked break. Give a section a heading only for a genuinely distinct movement, and use no more than three.
+- Write the full piece: the opening goes in "introduction", and the rest of the story (most of the words) goes in "sections". Most pieces need no subheadings. When the story moves to a new time or place, begin a new section with an empty heading: an unmarked break. Give a section a heading only for a genuinely distinct movement, and use no more than three.
 - Avoid generic openings ("Imagine...", "In the annals of history..."), rhetorical questions, listicle rhythm, clichés ("little did they know", "the rest is history"), throat-clearing, hype, and adjectives doing the work of evidence.
 
 Accuracy (a fact-checker reviews every sentence against the sources afterwards):
@@ -66,6 +66,8 @@ export async function writeArticle(input: {
   reserveUsd: number;
   /** Override the configured writer model (e.g. to compare Opus and Sonnet). */
   settings?: ModelSettings;
+  /** Set when a previous attempt came back incomplete. */
+  retryNote?: string;
 }): Promise<DraftArticle> {
   const prompt = `Write today's discovery.
 
@@ -76,7 +78,7 @@ Length: roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words of body text where the
 
 <research>
 ${researchForModel(input.pack)}
-</research>`;
+</research>${input.retryNote ? `\n\nIMPORTANT: ${input.retryNote}` : ""}`;
 
   return structured({
     stage: "write",

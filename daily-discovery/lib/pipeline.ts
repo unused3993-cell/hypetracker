@@ -9,11 +9,11 @@ import { DEFAULT_INTERESTS, planCategory } from "./interests";
 import { selectPassages } from "./passages";
 import { retrieveSources, type ResearchQuery } from "./retrieval";
 import { reviewArticle, reviewWorstCase } from "./review";
-import { readingTimeMinutes } from "./text";
+import { articleWordCount, readingTimeMinutes } from "./text";
 import { generateCandidates, type Candidate } from "./topics";
 import type { ArticleContent, ContentType, EditorialReview, GenerationStatus, LogEntry, ResearchPack, Source, ValidationIssue, ValidationReport } from "./types";
 import { validateDraft } from "./validate";
-import { writeArticle, type DraftArticle } from "./writer";
+import { WORD_RANGE, writeArticle, type DraftArticle } from "./writer";
 
 const DISCLAIMER =
   "Checked by an editorial-review model against the retrieved sources; corrections it proposed were applied. This is automated review, not professional fact-checking; an editor approves each article before publication.";
@@ -53,15 +53,24 @@ export interface Produced {
 
 /** Write and review one article from a research pack. */
 export async function produceArticle(opts: { query: ResearchQuery; contentType: ContentType; pack: ResearchPack; tracker: CostTracker; note: Note; writer?: typeof stages.write }): Promise<Produced> {
-  const draft = await writeArticle({
-    topic: opts.query.topic,
-    angle: opts.query.angle,
-    contentType: opts.contentType,
-    pack: opts.pack,
-    tracker: opts.tracker,
-    reserveUsd: reviewWorstCase(opts.pack),
-    settings: opts.writer,
-  });
+  const write = (retryNote?: string) =>
+    writeArticle({
+      topic: opts.query.topic,
+      angle: opts.query.angle,
+      contentType: opts.contentType,
+      pack: opts.pack,
+      tracker: opts.tracker,
+      reserveUsd: reviewWorstCase(opts.pack),
+      settings: opts.writer,
+      retryNote,
+    });
+  let draft = await write();
+  // A model occasionally returns only an opening. Ask once more for the complete piece.
+  const words = (d: DraftArticle) => articleWordCount({ introduction: d.introduction, sections: d.sections.map((s) => ({ ...s, source_ids: [] })) });
+  if (draft.sections.length === 0 || words(draft) < WORD_RANGE.min * 0.6) {
+    opts.note(`draft incomplete (${words(draft)} words, ${draft.sections.length} sections); asking the writer for the full piece`);
+    draft = await write(`Your previous attempt returned only ${words(draft)} words. Write the complete article, about ${WORD_RANGE.min}-${WORD_RANGE.max} words, with the body of the story in "sections".`);
+  }
   opts.note(`draft: "${draft.title}"`);
   const { article, review } = await reviewArticle({ article: draft, pack: opts.pack, tracker: opts.tracker });
   const sub = review.issues.filter((i) => i.severity === "substantive");

@@ -58,7 +58,7 @@ async function main() {
     `# ${article.title}`,
     `*${article.subtitle}*`,
     ...content.introduction,
-    ...content.sections.flatMap((s) => [s.heading ? `## ${s.heading}` : "* * *", ...s.paragraphs, `<sub>Sources: ${s.source_ids.join(", ") || "—"}</sub>`]),
+    ...content.sections.flatMap((s) => [s.heading ? `## ${s.heading}` : "* * *", ...s.paragraphs, s.source_ids.length ? `<sub>Sources: ${s.source_ids.join(", ")}</sub>` : ""]),
     article.uncertainties.length ? `**Where the evidence is uncertain**\n\n${article.uncertainties.map((u) => `- ${u}`).join("\n")}` : "",
     `**Related:** ${article.related_topics.join("; ")}`,
     `---`,

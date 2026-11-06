@@ -51,3 +51,9 @@ test("a revised paragraph replaces the whole paragraph, so corrections leave no 
   assert.equal(issues[0].applied, true);
   assert.equal(out.sections[0].paragraphs[0], revised);
 });
+
+test("a revised paragraph that balloons is not accepted wholesale; the excerpt splice is used instead", () => {
+  const original = article.sections[0].paragraphs[0];
+  const { article: out } = applyCorrections(article, [issue({ location: "s1-1", excerpt: original.slice(0, 20), correction: original.slice(0, 20), revised_paragraph: original + " padding".repeat(200) })]);
+  assert.equal(out.sections[0].paragraphs[0], original);
+});

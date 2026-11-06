@@ -110,7 +110,7 @@ const WP = "https://en.wikipedia.org/w/api.php";
 // Link targets that are rarely readable articles: catalogues, bibliographic databases, book
 // scans, paywalls, social media. (Live test: Zenodo, ADS, Semantic Scholar and PubMed all
 // blocked the crawler or returned no article text.)
-const SKIP_REFERENCE_HOSTS = /(^|\.)((wikipedia|wikimedia|wikidata|wiktionary|wikisource)\.org|books\.google\.[a-z.]+|worldcat\.org|jstor\.org|doi\.org|amazon\.[a-z.]+|google\.[a-z.]+|youtube\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|viaf\.org|id\.loc\.gov|isni\.org|d-nb\.info|catalogue\.bnf\.fr|openlibrary\.org|zenodo\.org|adsabs\.harvard\.edu|semanticscholar\.org|pubmed\.ncbi\.nlm\.nih\.gov|researchgate\.net|academia\.edu|hathitrust\.org)$/i;
+const SKIP_REFERENCE_HOSTS = /(^|\.)((wikipedia|wikimedia|wikidata|wiktionary|wikisource)\.org|books\.google\.[a-z.]+|worldcat\.org|jstor\.org|doi\.org|amazon\.[a-z.]+|google\.[a-z.]+|youtube\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|viaf\.org|id\.loc\.gov|isni\.org|d-nb\.info|catalogue\.bnf\.fr|openlibrary\.org|zenodo\.org|adsabs\.harvard\.edu|semanticscholar\.org|pubmed\.ncbi\.nlm\.nih\.gov|researchgate\.net|academia\.edu|hathitrust\.org|dictionary\.com|merriam-webster\.com|oed\.com|oxforddictionaries\.com|collinsdictionary\.com|bibliotecapleyades\.net|ancient-origins\.net|brepols\.net)$/i;
 
 export async function wikipediaSources(q: ResearchQuery): Promise<{ article: Omit<SourceRecord, "id"> | null; references: string[] }> {
   let title: string | null = null;

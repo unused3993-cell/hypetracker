@@ -19,7 +19,7 @@ Check the things that matter: facts, names, dates, numbers, scientific explanati
 - misleading: true pieces framed so the reader takes away something the sources don't support, including overstated certainty about disputed points.
 - omission: leaving out something the sources show is essential, such that the piece misleads.
 
-Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. For each issue, rewrite the whole paragraph so the fix reads as if the writer made it: no repeated phrases, no seams, same voice and rhythm, changing only what accuracy requires. Report at most one issue per paragraph; if a paragraph has several problems, fix them all in one revised_paragraph. Also flag attribution to websites ("Wikipedia says") as misleading and rewrite it per the style guide. If the article is sound, return no issues.`;
+Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. You are a fact-checker, not a co-writer. For each issue, rewrite the whole paragraph so the fix reads as if the writer made it: no repeated phrases, no seams, same voice and rhythm, changing only what accuracy requires. Report at most one issue per paragraph; if a paragraph has several problems, fix them all in one revised_paragraph. Keep every sentence you aren't fixing word for word. Never restore material the writer cut, never move content in from other paragraphs, and never add phrases like "sources say", "reports noted" or "other sources give": when sources disagree, name who holds each position, as the style guide requires. Interpretation that is marked as interpretation, including a closing line that draws the piece together, is allowed: flag it only if it states as fact something the sources contradict. Also flag attribution to websites ("Wikipedia says") as misleading and rewrite it per the style guide. If the article is sound, return no issues.`;
 
 /** Worst case for the fact-check. `cached`: the shared context is already cached for this model. */
 export function reviewWorstCase(pack: ResearchPack, articleChars = 12000, cached = true): number {
@@ -78,8 +78,11 @@ export function applyCorrections(article: DraftArticle, issues: ReviewIssue[]): 
       if (text === undefined || !pattern) continue;
       const m = text.match(pattern);
       if (!m) continue;
-      if (issue.revised_paragraph !== undefined && (issue.revised_paragraph.trim() || loc.startsWith("intro-") || loc.startsWith("s"))) {
-        setParagraph(out, loc, issue.revised_paragraph.trim());
+      // A whole-paragraph rewrite, unless it balloons (a sign it pulled in material from elsewhere).
+      const rp = issue.revised_paragraph;
+      const balloons = rp !== undefined && issue.type !== "omission" && rp.length > text.length * 1.5 + 200;
+      if (rp !== undefined && !balloons && (rp.trim() || loc.startsWith("intro-") || loc.startsWith("s"))) {
+        setParagraph(out, loc, rp.trim());
         return { ...issue, location: loc, applied: true };
       }
       const replacement = issue.type === "omission" ? `${m[0]} ${issue.correction.trim()}` : issue.correction.trim();

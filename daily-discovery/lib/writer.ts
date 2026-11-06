@@ -123,7 +123,7 @@ export async function rewriteArticle(input: { topic: string; draft: DraftArticle
     settings: input.settings ?? stages.rewrite,
     schema: StageOutput,
     field: "article",
-    system: `${SYSTEM}\n\nThis is a rewrite. Write the whole piece afresh from the research, following the editor's plan; don't patch the draft sentence by sentence. Keep what works, and keep the length at roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words.`,
+    system: `${SYSTEM}\n\nThis is a rewrite. Write the whole piece afresh from the research, following the editor's plan; don't patch the draft sentence by sentence. Keep what works. The rewrite must be at least ${WORD_RANGE.min} words and at most ${WORD_RANGE.max}, whatever length the editor suggests: when you cut detours, spend the words on the scenes, evidence and climax the editor asked for. Fill source_ids for every section.`,
     context: sharedContext(input.pack),
     prompt: `Topic: ${input.topic}\n\n<draft>\n${articleText(input.draft)}\n</draft>\n\n<editor>\nSpine: ${input.critique.spine}\n\nFindings:\n${notes}\n\nRevision plan:\n${input.critique.revision_plan}\n</editor>`,
     tracker: input.tracker,

@@ -78,9 +78,9 @@ export async function produceArticle(opts: { query: ResearchQuery; contentType: 
 
   // Edit and rewrite. Optional: skipped if they can't fit under the cap with review reserved.
   const ctx = sharedContext(opts.pack).length;
-  const editWorst = worstCaseCachedUsd(stages.edit.model, ctx + 20000, ctx, stages.edit.maxTokens);
+  const editWorst = worstCaseCachedUsd(stages.edit.model, ctx + 20000, stages.edit.model === (opts.writer ?? stages.write).model ? ctx : 0, stages.edit.maxTokens);
   const rewriter = opts.rewriter ?? stages.rewrite;
-  const rewriteWorst = worstCaseCachedUsd(rewriter.model, ctx + 30000, rewriter.model === stages.write.model ? ctx : 0, rewriter.maxTokens);
+  const rewriteWorst = worstCaseCachedUsd(rewriter.model, ctx + 30000, rewriter.model === (opts.writer ?? stages.write).model ? ctx : 0, rewriter.maxTokens);
   let critique: Critique | null = null;
   let rewrite: DraftArticle | null = null;
   let toReview = draft;

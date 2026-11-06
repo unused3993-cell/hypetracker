@@ -2,29 +2,14 @@
 // targeted corrections; code applies them. A substantive issue whose correction can't be
 // applied stays unresolved, and the article can't be approved.
 
-import { z } from "zod";
+import { StageOutput } from "./schemas";
 import { structured } from "./claude";
 import { stages } from "./config";
-import { worstCaseUsd, type CostTracker } from "./cost";
+import { worstCaseCachedUsd, worstCaseUsd, type CostTracker } from "./cost";
 import type { EditorialReview, ResearchPack, ReviewIssue } from "./types";
 import { sharedContext, type DraftArticle } from "./writer";
 
-const ReviewSchema = z.object({
-  issues: z.array(
-    z.object({
-      type: z.enum(["factual_error", "unsupported", "misleading", "omission"]),
-      severity: z.enum(["substantive", "minor"]).describe("substantive = would leave a reader believing something false or materially incomplete about something that matters"),
-      location: z.string().describe('"title", "subtitle", "intro-1", "s2-3" (section 2, paragraph 3), ...'),
-      excerpt: z.string().describe("The problem text, copied exactly from that paragraph (for omissions: the sentence after which the fix belongs)"),
-      correction: z.string().describe("The fix in brief: replacement text for the excerpt (empty to delete)"),
-      revised_paragraph: z.string().describe('The WHOLE paragraph at that location rewritten with the fix, reading naturally, in the article\'s voice; "" deletes the paragraph. For title/subtitle, the whole new title/subtitle.'),
-      explanation: z.string().describe("What the sources say, briefly"),
-      source_ids: z.array(z.string()),
-    }),
-  ),
-  source_assessment: z.string().describe("One or two sentences on the quality of the sources and whether they suffice for this piece"),
-  summary: z.string(),
-});
+
 
 const SYSTEM = `You are the research editor of a general-interest educational magazine. Check a feature against the research material it was written from, the way a careful magazine fact-checker would.
 
@@ -36,8 +21,11 @@ Check the things that matter: facts, names, dates, numbers, scientific explanati
 
 Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. For each issue, rewrite the whole paragraph so the fix reads as if the writer made it: no repeated phrases, no seams, same voice and rhythm, changing only what accuracy requires. Report at most one issue per paragraph; if a paragraph has several problems, fix them all in one revised_paragraph. Also flag attribution to websites ("Wikipedia says") as misleading and rewrite it per the style guide. If the article is sound, return no issues.`;
 
-export function reviewWorstCase(pack: ResearchPack, articleChars = 12000): number {
-  return worstCaseUsd(stages.review.model, SYSTEM.length + sharedContext(pack).length + articleChars + 3000, stages.review.maxTokens);
+/** Worst case for the fact-check. `cached`: the shared context is already cached for this model. */
+export function reviewWorstCase(pack: ResearchPack, articleChars = 12000, cached = true): number {
+  const ctx = sharedContext(pack).length;
+  const total = SYSTEM.length + ctx + articleChars + 6000;
+  return cached ? worstCaseCachedUsd(stages.review.model, total, ctx, stages.review.maxTokens) : worstCaseUsd(stages.review.model, total, stages.review.maxTokens);
 }
 
 export function paragraphsByLocation(a: DraftArticle): Map<string, string> {
@@ -115,7 +103,8 @@ export async function reviewArticle(opts: {
   const result = await structured({
     stage: "review",
     settings: stages.review,
-    schema: ReviewSchema,
+    schema: StageOutput,
+    field: "review",
     system: SYSTEM,
     context: sharedContext(opts.pack),
     prompt: `<article>\n${articleForReview(opts.article)}\n</article>`,

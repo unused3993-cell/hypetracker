@@ -1,4 +1,5 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { ArticleSchema, CritiqueSchema, StageOutput } from "./schemas";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { structured, type ModelSettings } from "./claude";
@@ -8,23 +9,7 @@ import type { ContentType, ResearchPack } from "./types";
 
 export const WORD_RANGE = { min: 1100, max: 1600 } as const;
 
-const ArticleSchema = z.object({
-  plan: z.string().describe("One sentence, written before the article: This is a [form] about [subject], driven by [spine], and it ends when [payoff]."),
-  title: z.string().describe("Compelling, accurate headline. No clickbait, no colon-subtitle."),
-  subtitle: z.string().describe("One sentence explaining the subject."),
-  introduction: z.array(z.string()).describe("Only the opening: one to three paragraphs, beginning on a concrete scene or detail"),
-  sections: z
-    .array(
-      z.object({
-        heading: z.string().describe('Usually "" (an unmarked section break); a short heading only for a distinct movement'),
-        paragraphs: z.array(z.string()),
-        source_ids: z.array(z.string()).describe("IDs (S1, S2, ...) of the sources this section draws on"),
-      }),
-    )
-    .describe("The body: the rest of the story, which is most of the article. At least one section; split only where the story moves to a new time or place"),
-  related_topics: z.array(z.string()).describe("Exactly three specific subjects for future exploration"),
-  uncertainties: z.array(z.string()).describe("Points the sources disagree on or leave open, one sentence each, for a reader's note. Empty if none."),
-});
+
 
 export type DraftArticle = z.infer<typeof ArticleSchema>;
 
@@ -97,7 +82,8 @@ The style guide and the research material are above.${input.retryNote ? `\n\nIMP
   return structured({
     stage: "write",
     settings: input.settings ?? stages.write,
-    schema: ArticleSchema,
+    schema: StageOutput,
+    field: "article",
     system: SYSTEM,
     context: sharedContext(input.pack),
     prompt,
@@ -108,13 +94,7 @@ The style guide and the research material are above.${input.retryNote ? `\n\nIMP
 
 const EDITOR = `You are the editor at BAER. Judge the draft against the BAER house style guide above, working through the editor's checklist at its end. Be specific and demanding: quote the draft and give a concrete fix for each point. Judge craft, structure and voice; also flag accuracy risks an editor would catch, using the research above. Then write a revision plan: the new form and spine if the draft's are weak, the new opening, the order of movements, what to cut, where the climax goes, and the ending.`;
 
-const CritiqueSchema = z.object({
-  spine: z.string().describe("The form and spine the piece should have, in the guide's one-sentence formula"),
-  findings: z
-    .array(z.object({ checklist_item: z.string(), quote: z.string().describe("Exact words from the draft"), fix: z.string() }))
-    .describe("Every problem found, most important first"),
-  revision_plan: z.string().describe("Instructions for the rewrite, in order"),
-});
+
 export type Critique = z.infer<typeof CritiqueSchema>;
 
 export function articleText(a: DraftArticle): string {
@@ -126,7 +106,8 @@ export async function critiqueArticle(input: { draft: DraftArticle; pack: Resear
   return structured({
     stage: "edit",
     settings: stages.edit,
-    schema: CritiqueSchema,
+    schema: StageOutput,
+    field: "critique",
     system: EDITOR,
     context: sharedContext(input.pack),
     prompt: `<draft>\n${articleText(input.draft)}\n</draft>`,
@@ -140,7 +121,8 @@ export async function rewriteArticle(input: { topic: string; draft: DraftArticle
   return structured({
     stage: "rewrite",
     settings: input.settings ?? stages.rewrite,
-    schema: ArticleSchema,
+    schema: StageOutput,
+    field: "article",
     system: `${SYSTEM}\n\nThis is a rewrite. Write the whole piece afresh from the research, following the editor's plan; don't patch the draft sentence by sentence. Keep what works, and keep the length at roughly ${WORD_RANGE.min}-${WORD_RANGE.max} words.`,
     context: sharedContext(input.pack),
     prompt: `Topic: ${input.topic}\n\n<draft>\n${articleText(input.draft)}\n</draft>\n\n<editor>\nSpine: ${input.critique.spine}\n\nFindings:\n${notes}\n\nRevision plan:\n${input.critique.revision_plan}\n</editor>`,

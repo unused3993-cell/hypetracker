@@ -45,10 +45,12 @@ export function assertNotRefused(message: Anthropic.Beta.BetaMessage, step: stri
  * One structured-output call with a pre-call budget check and post-call cost accounting.
  * `reserveUsd` keeps money back for mandatory later steps (e.g. verification after writing).
  */
-export async function structured<S extends z.ZodType>(opts: {
+export async function structured<S extends z.ZodType, F extends string | undefined = undefined>(opts: {
   stage: string;
   settings: ModelSettings;
   schema: S;
+  /** With a combined schema (lib/schemas.ts): the one field this stage fills, which is returned. */
+  field?: F;
   system: string;
   /**
    * Long material shared by several stages (style guide + research). Sent first in the system
@@ -58,7 +60,7 @@ export async function structured<S extends z.ZodType>(opts: {
   prompt: string;
   tracker: CostTracker;
   reserveUsd?: number;
-}): Promise<z.infer<S>> {
+}): Promise<F extends keyof z.infer<S> ? NonNullable<z.infer<S>[F]> : z.infer<S>> {
   const format = betaZodOutputFormat(opts.schema);
   const inputChars = (opts.context?.length ?? 0) + opts.system.length + opts.prompt.length + JSON.stringify(format).length;
   const cacheKey = opts.context ? `${opts.settings.model}:${opts.context.length}:${opts.context.slice(-200)}` : "";
@@ -77,7 +79,7 @@ export async function structured<S extends z.ZodType>(opts: {
           { type: "text" as const, text: opts.system },
         ]
       : opts.system,
-    messages: [{ role: "user", content: opts.prompt }],
+    messages: [{ role: "user", content: opts.field ? `${opts.prompt}\n\nFill only the "${opts.field}" field of the output; set every other field to null.` : opts.prompt }],
     output_config: { ...base.output_config, format },
   });
   opts.tracker.record(opts.stage, opts.settings.model, response.usage, response.model);
@@ -89,7 +91,12 @@ export async function structured<S extends z.ZodType>(opts: {
   if (!response.parsed_output) {
     throw new Error(`${opts.stage}: the model's output did not match the expected structure.`);
   }
-  return response.parsed_output as z.infer<S>;
+  const out = response.parsed_output as Record<string, unknown>;
+  if (opts.field) {
+    if (out[opts.field] == null) throw new Error(`${opts.stage}: the model left the "${opts.field}" output empty.`);
+    return out[opts.field] as never;
+  }
+  return out as never;
 }
 
 /** Turn SDK errors into messages that say what to do about them. */

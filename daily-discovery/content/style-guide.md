@@ -107,6 +107,8 @@ The reader is curious and intelligent, with no specialist background. Organise t
 - **Check that evidence answers the claim it follows.** A quotation that sounds authoritative may not address the objection before it. Distinguish observation, historical interpretation, current reconstruction and speculation, and never turn missing evidence into proof that something didn't exist.
 - **The ending completes this story:** fulfil the opening's promise or draw out the central discovery's implication. No late new mystery, no generic "what else lies beneath" line.
 - **Conversational British English.** Direct syntax, familiar words, natural contractions ("wasn't", "didn't"). No stiff phrases ("hitherto", "was deficient", "Nor did…"), no vague nouns ("the thing"), no forced informality. British spelling; one system of units throughout (metric).
+- **Short sentences are for clarity and emphasis,** not a repeated device for artificial drama. Vary length according to the thought.
+- **The uncertainty note holds secondary qualifications only.** Don't repeat caveats the prose already gives; a caveat that changes the meaning of a claim belongs beside that claim.
 - **Few breaks.** Prefer strong transitions to section breaks; a short piece shouldn't read as a series of entries.
 
 ---

@@ -1,0 +1,385 @@
+/* BAER — single-article reading experience. Mobile first; wider screens add space, not columns. */
+
+:root {
+  /* Near-white with a trace of warmth: not cream, not stark. */
+  --paper: #faf9f6;
+  --ink: #1c1b19;
+  --ink-2: #4a4743; /* subtitles, secondary text */
+  --ink-3: #6b6761; /* metadata, captions (≥4.5:1 on paper) */
+  --rule: #e6e3de;
+  --link-line: #bdb8b0;
+  --night: #121110; /* image ground */
+
+  --gutter: max(20px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  --measure: 36rem; /* ≈ 66 characters of body text */
+  --column: 44rem; /* shared left edge for headline, body and endmatter */
+  --wide: 60rem;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body.baer {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--baer-font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+}
+
+.baer a {
+  color: inherit;
+}
+
+.baer :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: var(--gutter);
+  top: 8px;
+  background: var(--paper);
+  padding: 8px 12px;
+  z-index: 10;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: max(10px, env(safe-area-inset-top, 0px)) var(--gutter-r) 10px var(--gutter);
+  max-width: var(--wide);
+  margin: 0 auto;
+}
+.wordmark {
+  font-family: var(--baer-font-wordmark);
+  font-weight: 400;
+  font-size: 0.9375rem; /* 15px: small, even on phones */
+  letter-spacing: 0.3em;
+  margin: 0;
+  /* Optical: letter-spacing adds trailing space after the last letter. */
+  margin-right: -0.3em;
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: 1;
+}
+
+/* ── Opening ──────────────────────────────────────────────────────────── */
+.opening,
+.article-body,
+.coda {
+  box-sizing: content-box;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter-r);
+}
+.opening {
+  padding-top: 28px;
+}
+.meta {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
+.meta span + span::before {
+  content: "·";
+  margin: 0 0.6em;
+  color: var(--ink-3);
+}
+.headline {
+  font-family: var(--baer-font-headline);
+  font-weight: 400;
+  font-size: clamp(2.25rem, 6.4vw + 0.9rem, 4rem); /* 36px at 360w → 64px */
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  margin: 14px 0 0;
+  text-wrap: balance;
+}
+.standfirst {
+  font-weight: 400;
+  font-size: 1.1875rem; /* 19px */
+  line-height: 1.45;
+  color: var(--ink-2);
+  margin: 18px 0 0;
+  max-width: 34rem;
+  text-wrap: pretty;
+}
+
+/* ── Images ──────────────────────────────────────────────────────────── */
+.lead-figure {
+  margin: 32px 0 0;
+}
+.lead-figure .frame {
+  background: var(--night);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+.lead-figure .frame > img,
+.lead-figure .frame > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lead-figure figcaption {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.45;
+  color: var(--ink-3);
+  margin: 10px var(--gutter-r) 0 var(--gutter);
+  max-width: var(--measure);
+}
+.lead-figure .credit {
+  display: block;
+  margin-top: 2px;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────── */
+.article-body {
+  padding-top: 36px;
+}
+.article-body > *,
+.article-body section > *,
+.coda > * {
+  max-width: var(--measure);
+}
+.article-body p {
+  font-size: 1.0625rem; /* 17px on phones */
+  line-height: 1.7;
+  margin: 0 0 1.25em;
+  hanging-punctuation: first;
+  text-wrap: pretty;
+}
+.article-body h2 {
+  font-family: var(--baer-font-headline);
+  font-weight: 400;
+  font-size: 1.625rem;
+  line-height: 1.18;
+  letter-spacing: -0.008em;
+  margin: 2.4em 0 0.75em;
+  text-wrap: balance;
+}
+/* Unmarked break in a narrative piece: a change of time or place, no heading. */
+.section-break {
+  width: 2.5rem;
+  margin: 2.2em 0;
+  border: 0;
+  border-top: 1px solid var(--ink-3);
+}
+.article-end {
+  margin: 2.5em 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* ── After the article ────────────────────────────────────────────────── */
+.coda h2 {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 40px 0 14px;
+}
+.notes p {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 0.8em;
+}
+.sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: src;
+}
+.sources li {
+  counter-increment: src;
+  border-top: 1px solid var(--rule);
+}
+.sources a {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 2px 0;
+  padding: 14px 0;
+  min-height: 48px;
+  text-decoration: none;
+}
+.sources a::before {
+  content: counter(src);
+  grid-row: span 2;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.sources .src-title {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  text-decoration: underline;
+  text-decoration-color: var(--link-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  overflow-wrap: anywhere;
+}
+.sources a:hover .src-title {
+  text-decoration-color: var(--ink);
+}
+.sources .src-host {
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+.ask {
+  margin: 48px 0 0;
+  border-top: 1px solid var(--rule);
+  padding-top: 20px;
+}
+.ask-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ask-label {
+  display: block;
+  font-family: var(--baer-font-headline);
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+.ask-sub {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.ask-status {
+  flex: none;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+.ask-note {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 4px 0 0;
+}
+
+.page-foot {
+  box-sizing: content-box;
+  max-width: var(--column);
+  margin: 64px auto 0;
+  padding: 24px var(--gutter-r) max(40px, env(safe-area-inset-bottom, 0px)) var(--gutter);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+.page-foot .wordmark {
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.missing {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 48px var(--gutter-r) 64px var(--gutter);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.missing code {
+  font-size: 0.875rem;
+  background: #f0eee9;
+  padding: 2px 5px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+
+/* ── Larger screens: more air, wider image, same single column ────────── */
+@media (min-width: 720px) {
+  :root {
+    --gutter: max(40px, env(safe-area-inset-left, 0px));
+    --gutter-r: max(40px, env(safe-area-inset-right, 0px));
+  }
+  .masthead {
+    min-height: 72px;
+  }
+  .wordmark {
+    font-size: 1rem;
+  }
+  .opening {
+    padding-top: 56px;
+  }
+  .headline {
+    margin-top: 18px;
+  }
+  .standfirst {
+    font-size: 1.3125rem;
+    margin-top: 22px;
+  }
+  .lead-figure {
+    max-width: var(--wide);
+    margin: 48px auto 0;
+    padding: 0 var(--gutter-r) 0 var(--gutter);
+  }
+  .lead-figure .frame {
+    aspect-ratio: 16 / 9;
+  }
+  .lead-figure figcaption {
+    margin: 12px 0 0;
+  }
+  .article-body {
+    padding-top: 56px;
+  }
+  .article-body p {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.72;
+  }
+  .article-body h2 {
+    font-size: 1.875rem;
+  }
+}

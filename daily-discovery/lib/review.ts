@@ -29,11 +29,11 @@ const SYSTEM = `You are the research editor of a general-interest educational ma
 
 Check the things that matter: facts, names, dates, numbers, scientific explanations, causal claims, and interpretations. Flag:
 - factual_error: contradicts the sources.
-- unsupported: a specific fact (date, figure, name, quotation, event) that the sources don't contain.
+- unsupported: a specific fact (date, figure, name, quotation, event) that the sources don't contain. This includes invented scene-setting in narrative passages: dialogue, thoughts, feelings, motives, weather, sounds or other atmospheric detail the sources don't record.
 - misleading: true pieces framed so the reader takes away something the sources don't support, including overstated certainty about disputed points.
 - omission: leaving out something the sources show is essential, such that the piece misleads.
 
-Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. For each issue, propose the smallest correction that fixes it, written to fit the paragraph. If the article is sound, return no issues.`;
+Allow reasonable explanation, general context, and clearly framed inference; don't demand a quotation for every sentence, and don't flag style. Corrections must keep the article's narrative voice. For each issue, propose the smallest correction that fixes it, written to fit the paragraph. If the article is sound, return no issues.`;
 
 export function reviewWorstCase(pack: ResearchPack, articleChars = 12000): number {
   return worstCaseUsd(stages.review.model, SYSTEM.length + researchForModel(pack).length + articleChars + 3000, stages.review.maxTokens);

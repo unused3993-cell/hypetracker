@@ -34,8 +34,8 @@ export function validateDraft(
   }));
   if (sections.length === 0) err("missing_body", "The article has no body sections.");
   if (sections.length > 8) warn("many_sections", `Body has ${sections.length} sections.`);
+  // Headings are optional: an empty heading is an unmarked section break in a narrative piece.
   sections.forEach((s, i) => {
-    if (!s.heading) err("missing_heading", `Section ${i + 1} has no heading.`);
     if (s.paragraphs.length === 0) err("empty_section", `Section "${s.heading || i + 1}" has no paragraphs.`);
   });
   if ((draft.subtitle ?? "").split(/[.!?](\s|$)/).filter((x) => x && x.trim()).length > 1)

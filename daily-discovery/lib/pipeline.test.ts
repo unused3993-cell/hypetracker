@@ -59,7 +59,7 @@ test("validateDraft passes a well-formed draft", () => {
   assert.equal(articleWordCount(r.content), 720);
 });
 
-test("validateDraft allows flexible structure but flags empty parts, length and duplicates", () => {
+test("validateDraft allows flexible structure (unheaded sections included) but flags empty parts, length and duplicates", () => {
   assert.deepEqual(validateDraft(draft({ sections: [{ heading: "One long section", paragraphs: [para(600)] }] }), [], 0.5).issues, [], "a single section is fine");
   const r = validateDraft(
     draft({ title: "How the Kamikaze Typhoons Saved Japan", subtitle: "", sections: [{ heading: "", paragraphs: [para(100)] }] }),
@@ -67,7 +67,7 @@ test("validateDraft allows flexible structure but flags empty parts, length and 
     0.5,
   );
   const codes = r.issues.map((i) => i.code).sort();
-  for (const c of ["missing_subtitle", "missing_heading", "word_count", "duplicate_topic"]) assert.ok(codes.includes(c), `expected ${c} in ${codes.join(",")}`);
+  for (const c of ["missing_subtitle", "word_count", "duplicate_topic"]) assert.ok(codes.includes(c), `expected ${c} in ${codes.join(",")}`);
 });
 
 test("demo articles pass the pipeline's structural validation", async () => {

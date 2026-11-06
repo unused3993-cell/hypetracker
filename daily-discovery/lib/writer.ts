@@ -4,43 +4,45 @@ import { stages } from "./config";
 import type { CostTracker } from "./cost";
 import type { ContentType, ResearchPack } from "./types";
 
-export const WORD_RANGE = { min: 1000, max: 1500 } as const;
+export const WORD_RANGE = { min: 1100, max: 1600 } as const;
 
 const ArticleSchema = z.object({
   title: z.string().describe("Compelling, accurate headline. No clickbait, no colon-subtitle."),
   subtitle: z.string().describe("One sentence explaining the subject."),
-  introduction: z.array(z.string()).describe("Opening paragraph(s)"),
+  introduction: z.array(z.string()).describe("The opening paragraphs, beginning on a concrete scene or detail"),
   sections: z
     .array(
       z.object({
-        heading: z.string(),
+        heading: z.string().describe('Usually "" (an unmarked section break); a short heading only for a distinct movement'),
         paragraphs: z.array(z.string()),
         source_ids: z.array(z.string()).describe("IDs (S1, S2, ...) of the sources this section draws on"),
       }),
     )
-    .describe("The body, in as many headed sections as the piece needs"),
+    .describe("The rest of the story, continuing the narrative; split only where it moves to a new time or place"),
   related_topics: z.array(z.string()).describe("Exactly three specific subjects for future exploration"),
   uncertainties: z.array(z.string()).describe("Points the sources disagree on or leave open, one sentence each, for a reader's note. Empty if none."),
 });
 
 export type DraftArticle = z.infer<typeof ArticleSchema>;
 
-const SYSTEM = `You write for Daily Discovery, a magazine that helps curious adults learn one genuinely interesting thing a day. Aim for the register of a fine long-form magazine feature: intelligent but accessible, clear and conversational, engaging without sensationalism, substantive without being academic.
+const SYSTEM = `You are a staff writer at Daily Discovery. You write long-form narrative nonfiction in the tradition of the best literary magazine journalism: one continuous, coherent story told by a writer with a point of view, never a report assembled from facts.
 
-You are given research material: excerpts from the sources gathered for this piece. Read it as a journalist would. Build an original feature from it, not a summary of each source:
-- Find the story or the question at its heart and open where it is most alive.
-- For stories, give narrative, context and why it mattered. For explanations, show how and why things work, so the reader could explain it to a friend.
-- Let the material decide the shape. Use headings where they help a reader; vary section length; no template.
-- Be concrete: names, places, dates, numbers and mechanisms, from the sources.
+Craft:
+- Build a single narrative line. Find the human or dramatic thread in the material (a person, a decision, a moment, an object) and carry the reader through it from beginning to end. Each paragraph should follow from the one before. Weave context, background and explanation into the story at the moment the reader needs them; don't park them in separate blocks.
+- Open on a precise, concrete scene or detail taken from the sources, not a thesis, a question or a sweeping generalisation. Earn the significance rather than announcing it.
+- Write with authority, restraint and dry wit. Choose the exact noun and the active verb. Vary sentence length: let a long, layered sentence give way to a short one. Use irony sparingly, never at the expense of accuracy.
+- Let people and their choices carry the piece, characterised through what they did, said and wrote as the sources record it.
+- Explain mechanisms and causes clearly, inside the flow of the story.
+- End on a resonant image, fact or turn that reframes what came before. Never end with a summary, a moral or a lesson.
+- Most pieces need no subheadings. When the story moves to a new time or place, begin a new section with an empty heading: an unmarked break. Give a section a heading only for a genuinely distinct movement, and use no more than three.
+- Avoid generic openings ("Imagine...", "In the annals of history..."), rhetorical questions, listicle rhythm, clichés ("little did they know", "the rest is history"), throat-clearing, hype, and adjectives doing the work of evidence.
 
-Accuracy:
-- Base factual statements on the research material. You may explain, connect and interpret, but frame inferences as such ("which suggests...", "historians read this as...").
-- Don't add specific facts — dates, figures, names, quotations — that aren't in the material. If something important is missing, write around it rather than filling it in from memory.
-- Where sources disagree or are uncertain, say so plainly.
-- Weigh sources: prefer scholarly, institutional and primary material over weaker pages, and ignore anything that looks unreliable.
+Accuracy (a fact-checker reviews every sentence against the sources afterwards):
+- Narrative must never become fiction. Every scene, detail, number, name, date, quotation, motive and feeling must come from the research material. Do not invent dialogue, thoughts, weather, sounds or atmosphere to make a scene vivid: if the sources don't describe it, don't describe it. Restraint is part of the style.
+- Interpret and connect freely, but mark inference as inference ("it seems likely", "historians have read this as").
+- Where sources disagree or are uncertain, make that tension part of the story instead of smoothing it over.
 - Quote only words that appear in the material, and attribute them.
-
-Avoid: generic AI openings ("Imagine...", "Have you ever wondered...", "In the annals of history..."), more than one rhetorical question, clickbait, closing morals or summaries ("In conclusion...", "It reminds us that..."), padding, and lists of facts in place of an argument.`;
+- Prefer scholarly, institutional and primary material over weaker pages; ignore anything that looks unreliable.`;
 
 /** The research material as the writer and reviewer see it, grouped by source. */
 export function researchForModel(pack: ResearchPack): string {

@@ -68,7 +68,7 @@ function Article({ article }: { article: ReaderArticle }) {
         ))}
         {article.sections.map((s, i) => (
           <section key={i}>
-            <h2>{s.heading}</h2>
+            {s.heading.trim() ? <h2>{s.heading}</h2> : <hr className="section-break" />}
             {s.paragraphs.map((p, j) => (
               <p key={j}>{p}</p>
             ))}

@@ -51,7 +51,14 @@ export function researchForModel(pack: ResearchPack): string {
   return [...bySource.entries()]
     .map(([id, texts]) => {
       const s = pack.sources.find((x) => x.id === id)!;
-      const kind = s.origin === "openalex" ? "scholarly abstract" : s.origin === "wikipedia" ? "encyclopedia" : "web page";
+      const kind =
+        s.origin === "openalex"
+          ? s.detail?.startsWith("open-access") ? "scholarly article" : "scholarly abstract"
+          : s.origin === "gutenberg" || s.origin === "internet_archive"
+            ? "public-domain book: a period or primary source; its scholarship may be outdated"
+            : s.origin === "wikipedia"
+              ? "encyclopedia"
+              : "web page";
       return `<source id="${id}" title="${s.title.replace(/"/g, "'")}" url="${s.url}" kind="${kind}">\n${texts.join("\n\n[…]\n\n")}\n</source>`;
     })
     .join("\n\n");

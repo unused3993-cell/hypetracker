@@ -7,7 +7,7 @@ import { anthropic, assertNotRefused, baseParams } from "./claude";
 import { config, stages } from "./config";
 import { worstCaseUsd, type CostTracker } from "./cost";
 import { decodeEntities, extractReadableText } from "./html";
-import { normalizeUrl } from "./text";
+import { normalizeUrl, topicTokens } from "./text";
 import type { SourceOrigin, SourceRecord } from "./types";
 
 export interface ResearchQuery {
@@ -168,6 +168,9 @@ interface OpenAlexWork {
   abstract_inverted_index?: Record<string, number[]> | null;
   authorships?: { author?: { display_name?: string } }[];
   primary_location?: { landing_page_url?: string | null; source?: { display_name?: string } | null } | null;
+  /** OpenAlex embeds Unpaywall's open-access data; no separate Unpaywall call or email is needed. */
+  best_oa_location?: { landing_page_url?: string | null; pdf_url?: string | null } | null;
+  open_access?: { is_oa?: boolean; oa_url?: string | null } | null;
 }
 
 export function rebuildAbstract(index: Record<string, number[]>): string {
@@ -181,22 +184,159 @@ export async function openAlexSources(q: ResearchQuery, limit = 3): Promise<Omit
   const r = await getJson<{ results?: OpenAlexWork[] }>(
     `https://api.openalex.org/works?per-page=${limit}&filter=has_abstract:true&search=${encodeURIComponent(q.searchTerms[0] ?? q.topic)}${mailto}`,
   );
-  return (r?.results ?? [])
-    .filter((w) => w.abstract_inverted_index && w.display_name)
-    .map((w) => {
+  const works = (r?.results ?? []).filter((w) => w.abstract_inverted_index && w.display_name);
+  return Promise.all(
+    works.map(async (w) => {
       const authors = (w.authorships ?? []).map((a) => a.author?.display_name).filter(Boolean).slice(0, 3).join(", ");
       const venue = w.primary_location?.source?.display_name;
       const abstract = decodeEntities(rebuildAbstract(w.abstract_inverted_index!)).normalize("NFKC");
-      return {
+      const record: Omit<SourceRecord, "id"> = {
         url: w.doi ?? w.primary_location?.landing_page_url ?? w.id,
         title: `${w.display_name}${authors ? ` — ${authors}` : ""}${w.publication_year ? ` (${w.publication_year})` : ""}${venue ? `, ${venue}` : ""}`,
-        origin: "openalex" as const,
-        content_status: "retrieved" as const,
+        origin: "openalex",
+        content_status: "retrieved",
         detail: "abstract only (via OpenAlex)",
         retrieved_at: new Date().toISOString(),
         text: `${w.display_name}\n\n${abstract}`,
       };
-    });
+      // Open-access full text, when the free copy is a readable web page (PDFs are still skipped).
+      const oaPage = w.best_oa_location?.landing_page_url ?? w.open_access?.oa_url;
+      if (oaPage && !/\.pdf($|[?#])/i.test(oaPage)) {
+        const page = await fetchPage(oaPage, "openalex");
+        if (page.content_status === "retrieved" && (page.text?.length ?? 0) > 3000) {
+          record.text = `${w.display_name}\n\n${abstract}\n\n${excerptRelevant(page.text!, queryText(q), config.research.maxBookChars)}`;
+          record.detail = `open-access full text (${hostOf(page.url)}, via OpenAlex/Unpaywall)`;
+        }
+      }
+      return record;
+    }),
+  );
+}
+
+// ── Long texts: keep only the relevant parts ───────────────────────────────
+
+const queryText = (q: ResearchQuery) => `${q.topic} ${q.angle} ${q.searchTerms.join(" ")}`;
+
+/**
+ * Books run to hundreds of thousands of characters; keep the chunks that mention the topic,
+ * in their original order, joined with an elision mark. Returns "" if nothing is relevant.
+ */
+export function excerptRelevant(text: string, query: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const terms = topicTokens(query);
+  const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const chunks: { i: number; text: string; score: number }[] = [];
+  let buf = "";
+  for (const p of paras) {
+    if (buf && buf.length + p.length > 1500) {
+      chunks.push({ i: chunks.length, text: buf, score: 0 });
+      buf = "";
+    }
+    buf = buf ? `${buf}\n\n${p}` : p;
+  }
+  if (buf) chunks.push({ i: chunks.length, text: buf, score: 0 });
+  for (const c of chunks) {
+    const toks = topicTokens(c.text);
+    for (const t of terms) if (toks.has(t)) c.score++;
+  }
+  const best = chunks.filter((c) => c.score >= 2).sort((a, b) => b.score - a.score);
+  const kept: typeof chunks = [];
+  let used = 0;
+  for (const c of best) {
+    if (used + c.text.length > maxChars) continue;
+    kept.push(c);
+    used += c.text.length;
+  }
+  return kept
+    .sort((a, b) => a.i - b.i)
+    .map((c) => c.text)
+    .join("\n\n[…]\n\n");
+}
+
+/** Plain-text books wrap lines at ~70 characters; rejoin lines within paragraphs. */
+export function unwrapPlainText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/-\n(?=[a-z])/g, "").replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+async function getText(url: string): Promise<string | null> {
+  try {
+    const res = await get(url, "text/plain");
+    if (!res.ok) return null;
+    return (await res.text()).slice(0, 8_000_000);
+  } catch {
+    return null;
+  }
+}
+
+function bookRecord(url: string, title: string, origin: SourceOrigin, raw: string, q: ResearchQuery, detail: string): Omit<SourceRecord, "id"> | null {
+  const excerpt = excerptRelevant(unwrapPlainText(raw).normalize("NFKC"), queryText(q), config.research.maxBookChars);
+  if (excerpt.length < 1500) return null; // the book barely mentions the topic
+  return { url, title, origin, content_status: "retrieved", detail, retrieved_at: new Date().toISOString(), text: excerpt };
+}
+
+// ── Project Gutenberg (via the free Gutendex API) ──────────────────────────
+
+interface GutendexBook {
+  id: number;
+  title: string;
+  authors?: { name: string }[];
+  formats?: Record<string, string>;
+}
+
+export async function gutenbergSources(q: ResearchQuery): Promise<Omit<SourceRecord, "id">[]> {
+  const r = await getJson<{ results?: GutendexBook[] }>(`https://gutendex.com/books/?search=${encodeURIComponent(q.searchTerms[0] ?? q.topic)}`);
+  for (const book of (r?.results ?? []).slice(0, 3)) {
+    const formats = book.formats ?? {};
+    const textUrl = Object.entries(formats).find(([type, u]) => type.startsWith("text/plain") && !u.endsWith(".zip"))?.[1];
+    if (!textUrl) continue;
+    const raw = await getText(textUrl);
+    if (!raw) continue;
+    // Strip the Project Gutenberg licence header and footer.
+    const start = raw.search(/\*\*\* ?START OF (THE|THIS) PROJECT GUTENBERG[^\n]*\n/i);
+    const end = raw.search(/\*\*\* ?END OF (THE|THIS) PROJECT GUTENBERG/i);
+    const body = raw.slice(start >= 0 ? raw.indexOf("\n", start) + 1 : 0, end > 0 ? end : undefined);
+    const author = book.authors?.[0]?.name;
+    const rec = bookRecord(`https://www.gutenberg.org/ebooks/${book.id}`, `${book.title}${author ? ` — ${author}` : ""} (Project Gutenberg)`, "gutenberg", body, q, "public-domain book; relevant excerpts");
+    if (rec) return [rec];
+  }
+  return [];
+}
+
+// ── Internet Archive (public-domain texts) ─────────────────────────────────
+
+interface ArchiveDoc {
+  identifier: string;
+  title?: string;
+  creator?: string | string[];
+  year?: string | number;
+}
+
+export async function internetArchiveSources(q: ResearchQuery): Promise<Omit<SourceRecord, "id">[]> {
+  // Exclude lending-library copies, whose full text can't be downloaded.
+  const query = `(${q.searchTerms[0] ?? q.topic}) AND mediatype:texts AND NOT collection:inlibrary AND NOT collection:printdisabled`;
+  const r = await getJson<{ response?: { docs?: ArchiveDoc[] } }>(
+    `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&rows=4&output=json`,
+  );
+  for (const doc of (r?.response?.docs ?? []).slice(0, 4)) {
+    const raw = await getText(`https://archive.org/download/${encodeURIComponent(doc.identifier)}/${encodeURIComponent(doc.identifier)}_djvu.txt`);
+    if (!raw) continue;
+    const creator = Array.isArray(doc.creator) ? doc.creator[0] : doc.creator;
+    const rec = bookRecord(
+      `https://archive.org/details/${doc.identifier}`,
+      `${doc.title ?? doc.identifier}${creator ? ` — ${creator}` : ""}${doc.year ? ` (${doc.year})` : ""} (Internet Archive)`,
+      "internet_archive",
+      raw,
+      q,
+      "public-domain book (OCR text); relevant excerpts",
+    );
+    if (rec) return [rec];
+  }
+  return [];
 }
 
 // ── Anthropic web search (capped fallback) ─────────────────────────────────
@@ -257,7 +397,7 @@ export interface RetrievalResult {
 
 /** Retrieved sources with substantial text (abstracts don't count). */
 const fullText = (sources: Omit<SourceRecord, "id">[]) =>
-  sources.filter((s) => s.content_status === "retrieved" && s.origin !== "openalex" && (s.text?.length ?? 0) >= 2000).length;
+  sources.filter((s) => s.content_status === "retrieved" && (s.origin !== "openalex" || s.detail?.startsWith("open-access")) && (s.text?.length ?? 0) >= 2000).length;
 
 export async function retrieveSources(q: ResearchQuery, tracker: CostTracker, reserveUsd: number, allowWebSearch = true, forceWebSearch = false): Promise<RetrievalResult> {
   const log: string[] = [];
@@ -267,13 +407,16 @@ export async function retrieveSources(q: ResearchQuery, tracker: CostTracker, re
   if (wp.article) all.push(wp.article);
   log.push(wp.article ? `Wikipedia: ${wp.article.title}; ${wp.references.length} cited sites` : "Wikipedia: no article found");
 
-  const refs = await inBatches(wp.references.slice(0, config.research.maxReferencePages), 4, (u) => fetchPage(u, "wikipedia_reference"));
-  all.push(...refs);
+  const [refs, oa, gutenberg, archive] = await Promise.all([
+    inBatches(wp.references.slice(0, config.research.maxReferencePages), 4, (u) => fetchPage(u, "wikipedia_reference")),
+    openAlexSources(q),
+    gutenbergSources(q),
+    internetArchiveSources(q),
+  ]);
+  all.push(...refs, ...oa, ...gutenberg, ...archive);
   log.push(`Wikipedia references: ${refs.filter((r) => r.content_status === "retrieved").length}/${refs.length} retrieved`);
-
-  const oa = await openAlexSources(q);
-  all.push(...oa);
-  log.push(`OpenAlex: ${oa.length} abstracts`);
+  log.push(`OpenAlex: ${oa.length} papers (${oa.filter((s) => s.detail?.startsWith("open-access")).length} with open-access full text)`);
+  log.push(`Books: ${gutenberg.length ? gutenberg[0].title : "no relevant Project Gutenberg text"}; ${archive.length ? archive[0].title : "no relevant Internet Archive text"}`);
 
   let usedWebSearch = false;
   if (allowWebSearch && (forceWebSearch || fullText(all) < config.research.targetSources)) {

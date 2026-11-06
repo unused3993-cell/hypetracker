@@ -78,6 +78,8 @@ export const config = {
     /** Research material given to the writer and reviewer (~14K tokens). */
     maxPassageChars: num("MAX_RESEARCH_CHARS", 48000),
     maxPassagesPerSource: 10,
+    /** Relevant excerpt kept from a book or open-access paper. */
+    maxBookChars: num("MAX_BOOK_CHARS", 20000),
     /** Below this much selected material (or fewer than 3 sources), a topic is rejected. */
     minMaterialChars: num("MIN_RESEARCH_CHARS", 8000),
     /** Identifies the crawler to site owners. Set CRAWLER_CONTACT to a URL or address you control. */

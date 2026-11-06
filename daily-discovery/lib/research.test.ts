@@ -3,10 +3,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CostTracker, BudgetExceeded, worstCaseUsd } from "./cost";
-import { ECLIPSE_QUERY, fixtureFetch, MAGAZINE_HTML, OBSERVATORY_HTML } from "./fixtures";
+import { ECLIPSE_QUERY, OPENALEX, fixtureFetch, MAGAZINE_HTML, OBSERVATORY_HTML } from "./fixtures";
 import { extractReadableText } from "./html";
 import { segment, selectPassages } from "./passages";
-import { arxivAlternates, rebuildAbstract, retrieveSources, setFetchForTests } from "./retrieval";
+import { arxivAlternates, excerptRelevant, gutenbergSources, internetArchiveSources, openAlexSources, rebuildAbstract, retrieveSources, setFetchForTests } from "./retrieval";
 
 test("extractReadableText keeps article prose and drops scripts, navigation, footers and footnote markers", () => {
   const { title, text } = extractReadableText(OBSERVATORY_HTML);
@@ -94,4 +94,84 @@ test("CostTracker prices fallback iterations with the model that actually served
   const expected = (1000 * 2 + 100 * 10) / 1e6 + (1000 * 5 + 100 * 25) / 1e6 + 0.02;
   assert.ok(Math.abs(t.spent - expected) < 1e-9);
   assert.match(t.report("").stages[0].model, /opus-4-8/);
+});
+
+// ── Free book and open-access sources (fixtures; the real APIs are not contacted) ──
+
+const MONGOL_QUERY = { topic: "How the Mongols tried to invade Japan", angle: "The fleets of 1274 and 1281 and the typhoon", searchTerms: ["Mongol invasions of Japan"] };
+const filler = (n: number) => Array.from({ length: n }, (_, i) => `Chapter ${i}. The merchants of the river towns traded silk and salt along the coast,\nand the harvest that year was described at\nsome length by the chronicler.`).join("\n\n");
+const relevant = "The Mongol fleet sailed for Japan in 1274 and again in 1281, when a typhoon\nwrecked the invasion ships off Kyushu and the Japanese defenders held the shore.";
+const BOOK = `Header text\n*** START OF THE PROJECT GUTENBERG EBOOK TRAVELS ***\n${filler(60)}\n\n${relevant}\n\n${filler(60)}\n\n${relevant.replace("1274", "the first year")}\n\n${filler(60)}\n*** END OF THE PROJECT GUTENBERG EBOOK TRAVELS ***\nLicence text`;
+
+function booksFetch(extra: Record<string, () => Response> = {}) {
+  const json = (b: unknown) => () => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json" } });
+  const text = (b: string) => () => new Response(b, { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
+  return fixtureFetch({
+    "gutendex.com": json({ results: [{ id: 10636, title: "The Travels of Marco Polo", authors: [{ name: "Polo, Marco" }], formats: { "text/plain; charset=us-ascii": "https://www.gutenberg.org/ebooks/10636.txt.utf-8" } }] }),
+    "gutenberg.org/ebooks/10636.txt": text(BOOK),
+    "advancedsearch.php": json({ response: { docs: [{ identifier: "lending-copy", title: "x" }, { identifier: "historyofjapan00murd", title: "A History of Japan", creator: "Murdoch, James", year: "1903" }] } }),
+    "lending-copy_djvu.txt": () => new Response("forbidden", { status: 403 }),
+    "historyofjapan00murd_djvu.txt": text(`${filler(80)}\n\n${relevant}\n\n${filler(40)}\n\n${relevant}`),
+    ...extra,
+  });
+}
+
+test("Gutenberg: strips the licence, rejoins wrapped lines, keeps only relevant excerpts", async () => {
+  setFetchForTests(booksFetch());
+  try {
+    const [book] = await gutenbergSources(MONGOL_QUERY);
+    assert.equal(book.origin, "gutenberg");
+    assert.equal(book.url, "https://www.gutenberg.org/ebooks/10636");
+    assert.match(book.title, /Travels of Marco Polo — Polo, Marco \(Project Gutenberg\)/);
+    assert.ok(book.text!.includes("when a typhoon wrecked the invasion ships"), "wrapped lines rejoined");
+    assert.ok(!/START OF|Licence text|Header text/.test(book.text!), "licence header/footer removed");
+    assert.ok(book.text!.length <= 20000 && book.text!.length < BOOK.length / 2, "only excerpts kept");
+    assert.match(book.text!, /\[…\]/, "elisions marked between excerpts");
+  } finally {
+    setFetchForTests(null);
+  }
+});
+
+test("Internet Archive: skips texts it can't download and keeps the first relevant one", async () => {
+  setFetchForTests(booksFetch());
+  try {
+    const [book] = await internetArchiveSources(MONGOL_QUERY);
+    assert.equal(book.url, "https://archive.org/details/historyofjapan00murd");
+    assert.match(book.title, /A History of Japan — Murdoch, James \(1903\) \(Internet Archive\)/);
+    assert.match(book.text!, /Mongol fleet sailed for Japan/);
+  } finally {
+    setFetchForTests(null);
+  }
+});
+
+test("books that barely mention the topic are dropped", async () => {
+  setFetchForTests(booksFetch({ "gutenberg.org/ebooks/10636.txt": () => new Response(filler(200), { status: 200, headers: { "content-type": "text/plain" } }) }));
+  try {
+    assert.deepEqual(await gutenbergSources(MONGOL_QUERY), []);
+  } finally {
+    setFetchForTests(null);
+  }
+});
+
+test("OpenAlex: open-access full text (Unpaywall data) replaces the bare abstract when it's a readable page", async () => {
+  const article = `<html><head><title>Paper</title></head><body><article>${Array.from({ length: 40 }, () => `<p>${relevant} The defenders built a stone wall along Hakata Bay after the first invasion.</p>`).join("")}</article></body></html>`;
+  setFetchForTests(
+    booksFetch({
+      "api.openalex.org": () =>
+        new Response(JSON.stringify({ results: [{ ...OPENALEX.results[0], best_oa_location: { landing_page_url: "https://journal.example.org/oa/123", pdf_url: null } }] }), { status: 200, headers: { "content-type": "application/json" } }),
+      "journal.example.org/oa/123": () => new Response(article, { status: 200, headers: { "content-type": "text/html" } }),
+    }),
+  );
+  try {
+    const [paper] = await openAlexSources(MONGOL_QUERY);
+    assert.match(paper.detail!, /^open-access full text \(journal\.example\.org/);
+    assert.match(paper.text!, /stone wall along Hakata Bay/);
+  } finally {
+    setFetchForTests(null);
+  }
+});
+
+test("excerptRelevant leaves short texts untouched and returns nothing for irrelevant long ones", () => {
+  assert.equal(excerptRelevant("short text", "Mongol Japan", 100), "short text");
+  assert.equal(excerptRelevant(filler(200), "Mongol Japan typhoon", 5000), "");
 });

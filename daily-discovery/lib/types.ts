@@ -39,7 +39,7 @@ export interface Source {
 
 // ── Research ─────────────────────────────────────────────────────
 
-export type SourceOrigin = "wikipedia" | "wikipedia_reference" | "openalex" | "web_search";
+export type SourceOrigin = "wikipedia" | "wikipedia_reference" | "openalex" | "gutenberg" | "internet_archive" | "web_search";
 
 /** Whether we hold the source's own text. */
 export type ContentStatus = "retrieved" | "search_result_only" | "fetch_failed" | "skipped";
